@@ -199,7 +199,7 @@ The separate label control enables or disables progressive labels.
 
 **Glow effects** enables or disables the graph's glow. The **Strength** slider changes its intensity from `0` to `2.5`. A strength of zero disables glow.
 
-Turning glow off bypasses bloom postprocessing and removes node halos. The map, selection, connections, labels, search, and inspector remain available.
+Turning glow off skips the bloom extraction, blur and blend passes and removes node halos. Both modes retain the same offscreen scene target and final output conversion, so disabling glow does not switch the graph onto a different antialiasing path. The map, selection, connections, labels, search, and inspector remain available. See [Rendering performance](docs/performance.md) for investigation details and a controlled comparison procedure.
 
 ### Automatic performance
 

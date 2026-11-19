@@ -59,6 +59,7 @@ and `sourcefield mcp` for the stdio server. Remove the registration with
 | `npm run check` | TypeScript checking. |
 | `npm run smoke` | Analyze the Field Notes example, check a cross-file call, export, move the source, reopen, and compare saved graph/view data. |
 | `npm run smoke:dependencies` | Check pruning, environment markers, opt-in across ignored dependency roots, cross-file calls, protected files and portable scan scope. |
+| `npm run smoke:render` | Use the real Three.js postprocessing passes with a recording renderer to check glow toggling, skipped bloom work, consistent scene targets and preserved view state. This does not measure GPU performance. |
 | `npm run smoke:mcp` | Check the local stdio protocol, tools, source boundaries, view acknowledgement with a renderer stub, offline maps, and Explorer arguments. |
 
 The MCP smoke check uses SDK clients and does not automate Claude or ChatGPT.

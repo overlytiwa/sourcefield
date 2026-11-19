@@ -1,7 +1,7 @@
 {
   "name": "sourcefield",
   "productName": "Sourcefield",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Explore a local codebase as a luminous, symbol-level 3D map.",
   "private": true,
   "main": "dist-electron/main.cjs",
@@ -18,7 +18,8 @@
     "icons": "node scripts/build-icons.mjs",
     "mcp": "node dist-electron/mcp.cjs",
     "smoke:mcp": "node scripts/mcp-smoke.mjs",
-    "smoke:dependencies": "node scripts/dependencies-smoke.mjs"
+    "smoke:dependencies": "node scripts/dependencies-smoke.mjs",
+    "smoke:render": "node scripts/render-smoke.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",

@@ -194,6 +194,10 @@ export class GraphScene {
   restoreGlow() { this.reduced = false; this.performanceMonitor.reset(performance.now()); this.updateRendering(); }
   private updateRendering() {
     this.glowActive = this.renderSettings.glowEnabled && this.renderSettings.glowStrength > 0 && !this.reduced;
+    // Keep the scene on the same offscreen target in both modes. Rendering it
+    // directly to the antialiased canvas changes MSAA and output conversion,
+    // which can make the ostensibly cheaper glow-off path more expensive.
+    this.bloom.enabled = this.glowActive;
     this.bloom.strength = this.renderSettings.glowStrength;
     if (this.points) (this.points.material as THREE.ShaderMaterial).uniforms.uGlow.value = this.glowActive ? this.renderSettings.glowStrength / 0.72 : 0;
     this.onRenderStatus({ glowActive: this.glowActive, reduced: this.reduced });
@@ -296,7 +300,7 @@ export class GraphScene {
       if (t === 1) this.animation = undefined;
     }
     this.controls.update();
-    if (this.glowActive) this.composer.render(); else this.renderer.render(this.scene, this.camera);
+    this.composer.render();
     this.drawLabels(now);
   };
   private clear() {
