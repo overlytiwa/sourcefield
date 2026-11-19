@@ -4,7 +4,7 @@ import { callLocalBridge } from './bridge';
 import { MCP_INSTRUCTIONS, toolDescriptions, toolSchemas, type ToolName } from './contracts';
 
 export async function startMcpServer() {
-  const server = new McpServer({ name: 'sourcefield', version: '1.1.0' }, { instructions: MCP_INSTRUCTIONS });
+  const server = new McpServer({ name: 'sourcefield', version: '1.2.0' }, { instructions: MCP_INSTRUCTIONS });
   for (const name of Object.keys(toolSchemas) as ToolName[]) {
     server.registerTool(`sourcefield_${name}`, { description: toolDescriptions[name], inputSchema: toolSchemas[name],
       annotations: { readOnlyHint: name !== 'control_view', destructiveHint: false, idempotentHint: name !== 'control_view', openWorldHint: false } },

@@ -58,6 +58,7 @@ and `sourcefield mcp` for the stdio server. Remove the registration with
 | --- | --- |
 | `npm run check` | TypeScript checking. |
 | `npm run smoke` | Analyze the Field Notes example, check a cross-file call, export, move the source, reopen, and compare saved graph/view data. |
+| `npm run smoke:dependencies` | Check pruning, environment markers, opt-in across ignored dependency roots, cross-file calls, protected files and portable scan scope. |
 | `npm run smoke:mcp` | Check the local stdio protocol, tools, source boundaries, view acknowledgement with a renderer stub, offline maps, and Explorer arguments. |
 
 The MCP smoke check uses SDK clients and does not automate Claude or ChatGPT.
@@ -110,7 +111,7 @@ JavaScript dependencies, but the configured client still needs a Node runtime.
 
 ## Icon assets
 
-`resources/icon.svg` is the editable master used by the toolbar and app icon.
+`resources/icon.svg` is the original monochrome Lucide Orbit mark used by both the toolbar and native app icon. The glyph license is in `resources/ICON-LICENSE.txt`.
 `resources/icon-small.svg` is a compatible copy. The earlier detailed artwork
 is retained separately as `resources/icon-detailed.svg` and is not the app icon.
 
@@ -122,8 +123,8 @@ This renders the master to PNG sizes, a multi-image Windows ICO, and a macOS
 ICNS. Icon generation also runs during the production build. The generated
 native assets are included so development launches can use them immediately.
 
-`node scripts/draw-icon.mjs` regenerates the vector masters from their
-construction code. Running it overwrites manual edits to those SVG files.
+`node scripts/draw-icon.mjs` regenerates the Orbit vector masters from their
+construction code, leaving the archived detailed artwork untouched. Running it overwrites manual edits to those SVG files.
 
 ## Implementation boundaries
 

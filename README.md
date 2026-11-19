@@ -181,6 +181,14 @@ The callback inside `Notebook.search` in `src/notebook.js` calls `matchesQuery` 
 
 Open **View settings** from the controls at the upper right of the map.
 
+### Dependency code
+
+**Show dependency code** is off by default. Installed libraries are left out of the scan and map so your own code stays easier to navigate. Turn it on in View settings to rescan the current project with recognized dependency folders included. Turning it off rescans with those folders excluded again.
+
+This changes the actual scan scope, including symbol search and MCP results. It is not just a visibility filter over an already loaded library graph. The successful setting is remembered for future folder scans; cancelling or failing a rescan keeps the previous map and preference.
+
+The analysis report lists detected dependency folders that were excluded. Saved maps preserve their scan scope. An imported map can only show code that was exported; open its project folder to change dependency inclusion. Including dependencies can substantially increase scanning time and map size, and the existing scan limits still apply. Project files are enumerated before dependency contents so libraries do not take the file budget ahead of your own source.
+
 ### Connection layers
 
 Toggle containment, imports, exports, calls, inheritance, or references to show the relationships relevant to your current investigation. Hiding a layer changes the visualization without removing those relationships from the map.
@@ -411,7 +419,22 @@ Use the report's filters to inspect the relevant category. When a diagnostic has
 
 ### Files included in a scan
 
-The scanner applies `.gitignore` rules, including nested ignore files, and skips symlinks. It also excludes common dependency, build, cache, and tool directories, including `node_modules`, `.git`, `dist`, `build`, `.next`, `coverage`, `.venv`, `vendor`, and `target`.
+The scanner applies nested `.gitignore` rules and skips symlinks. It detects common installed-library directories and prunes them before enumerating their contents when **Show dependency code** is off.
+
+| Ecosystem | Recognized dependency folders or markers |
+| --- | --- |
+| JavaScript / TypeScript | `node_modules`, `bower_components`, `jspm_packages`, `.yarn`, `.pnpm-store`, `.npm` |
+| Python | `.venv`, `venv`, `site-packages`, `dist-packages`, `__pypackages__`; custom-named environments with `pyvenv.cfg` or `conda-meta/history` |
+| PHP, Go, Ruby, Rust | `vendor` next to an ecosystem manifest, or with Go/Composer installation markers; Cargo's `.cargo/registry` and `.cargo/git`; Go's `pkg/mod` with a download-cache marker |
+| Java / Kotlin | `.m2`, `.gradle` |
+| .NET | `.nuget`; installed NuGet package directories identified by `.nupkg.metadata` or a matching `.nupkg` file |
+| C / C++ | `vcpkg_installed`, `.conan`, `.conan2`, `third_party`, `third-party`, `thirdparty`; CMake `_deps` beside `CMakeCache.txt` |
+| Apple platforms | `Pods` with a Podfile or installation marker; `Carthage` next to a Cartfile |
+| Other ecosystems | `.pub-cache`, Lua's `lua_modules`, OCaml's `_opam`, Elixir's `deps` next to `mix.exs` |
+
+Folder detection works independently of symbol-analysis support: a recognized Dart dependency directory can be excluded even though Dart symbols are not currently analyzed. Ordinary `lib`, `libs` and monorepo `packages` directories are kept unless another ignore rule applies. `.NET` `bin` and `obj` are treated as generated output only beside a project file.
+
+Explicit dependency opt-in overrides inherited `.gitignore` rules at a recognized dependency root. That root's own ignore files still apply. Other ignored source folders remain excluded. Build output, caches and metadata such as `dist`, `build`, `target`, `.next`, `coverage`, `__pycache__`, `.git` and `.sourcefield` stay excluded in both modes.
 
 `.env` files, common private-key file extensions, and Sourcefield's `.sourcefield` runtime directory are excluded. Hard exclusions still apply even when a directory would otherwise be included by ignore rules.
 
@@ -474,7 +497,7 @@ Native menus also expose file actions, standard editing commands, and fullscreen
 | A known call or reference is absent | Inspect unresolved/external diagnostics and language limitations. Rescan if the source changed. |
 | Labels are not visible | Enable labels and zoom closer. Overlap prevention can hide some names; use search for an exact symbol. |
 | Nodes are hard to pick in a dense area | Zoom closer, click a visible label, or select the node from search. |
-| The map is slow | Reduce or disable glow, enable Automatic performance, or scan a smaller directory. |
+| The map is slow | Turn off Show dependency code, reduce or disable glow, enable Automatic performance, or scan a smaller directory. |
 | Glow switched off by itself | Automatic performance paused it. Use View settings → Restore glow to retry. |
 | A source preview looks outdated | Inspector previews are scan-time snapshots. Rescan the project; MCP can also read current scanned source files. |
 | A map opens without its source folder, but full source is unavailable | Expected for a saved map. It retains graph data and limited previews, not complete source files. |

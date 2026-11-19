@@ -30,6 +30,7 @@ The exact TypeScript schema is in `shared/types.ts`; runtime validation is in
 | `edges` | Resolved directed relationships |
 | `issues` | Unsupported/skipped files, unresolved/external targets, parse errors, limits |
 | `layout` | Algorithm `spherical-graph-v1`, deterministic seed, radius |
+| `scan` (optional) | Dependency inclusion setting, excluded dependency-folder count, and up to 1,000 relative paths with detection reasons. Older version-1 maps without this field remain valid. |
 | `view` | Optional exact camera, selection, connection visibility and label state |
 
 ## Nodes

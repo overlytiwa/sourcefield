@@ -3,7 +3,7 @@ import { ArrowDownLeft, ArrowUpRight, ArrowUpToLine, Braces, Check, ChevronDown,
 import { readRenderSettings, saveRenderSettings, type RenderStatus } from './render-settings';
 import { GraphScene } from './graph';
 import { McpSetup } from './components/McpSetup';
-import type { RemoteViewCommand, RemoteViewResult } from '../shared/types';
+import type { RemoteViewCommand, RemoteViewResult, ScanState } from '../shared/types';
 import { SourcefieldIcon } from './components/SourcefieldIcon';
 import { EDGE_KINDS, type CodeMap, type EdgeKind, type Issue, type MapNode, type ScanProgress } from '../shared/types';
 
@@ -18,6 +18,7 @@ export default function App() {
   const [busy, setBusy] = useState(false), [exporting, setExporting] = useState(false);
   const [query, setQuery] = useState(''), [searchOpen, setSearchOpen] = useState(false), [searchIndex, setSearchIndex] = useState(0);
   const [renderSettings, setRenderSettings] = useState(readRenderSettings);
+  const [scanState, setScanState] = useState<ScanState>({ includeDependencies: false, canRescan: false });
   const [renderStatus, setRenderStatus] = useState<RenderStatus>({ glowActive: true, reduced: false });
   const reducedNotice = useRef(false);
   const [edges, setEdges] = useState<EdgeKind[]>(EDGE_KINDS), [labels, setLabels] = useState(true), [filters, setFilters] = useState(false);
@@ -34,6 +35,8 @@ export default function App() {
     setMap(value); setSelected(value.view?.selected ?? null); setEdges(value.view?.visibleEdges ?? EDGE_KINDS); setLabels(value.view?.labels ?? true);
     setQuery(''); setSearchOpen(false); setIssuesOpen(false); setBusy(false); setProgress(null); setMessage('');
     scene.current?.load(value);
+    setScanState({ includeDependencies: value.scan?.includeDependencies ?? false, canRescan: false });
+    window.sourcefield?.getScanState().then(setScanState).catch(() => {});
   }, []);
   useEffect(() => {
     try {
@@ -84,6 +87,16 @@ export default function App() {
     try { const result = await window.sourcefield.exportMap(scene.current.capture()); if (result.ok) setMessage(`Saved ${result.value.name}`); else if (!result.cancelled) setMessage(result.error); }
     catch (e) { setMessage(e instanceof Error ? e.message : 'Unable to export map.'); }
     finally { setExporting(false); }
+  }
+  async function changeDependencies(include: boolean) {
+    if (busy || !scanState.canRescan || !window.sourcefield) return;
+    setBusy(true); setFilters(false); setMessage('');
+    try {
+      const result = await window.sourcefield.setIncludeDependencies(include);
+      if (result.ok) acceptMap(result.value);
+      else if (!result.cancelled) setMessage(result.error);
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to rescan project.'); }
+    finally { setBusy(false); setProgress(null); }
   }
   remoteView.current = command => {
     if (!scene.current || !map) throw new Error('The visualization is not ready. Open a project or map first.');
@@ -142,8 +155,8 @@ export default function App() {
         {map && <>
           <div className="map-heading"><span className="eyebrow">PROJECT MAP</span><h1>{map.project.name}</h1><p>{map.project.languages.join(' · ') || 'Folder structure'}<span className="heading-dot">·</span>{number(map.project.files)} files</p></div>
           <div className="view-tools">
-            <div className="filter-wrap"><button className={`icon-button ${filters ? 'pressed' : ''}`} title="View settings: layers and glow" aria-label="View settings" aria-expanded={filters} onClick={() => setFilters(v => !v)}><SlidersHorizontal size={16} /></button>
-              {filters && <><button className="dismiss-layer" tabIndex={-1} onClick={() => setFilters(false)} aria-label="Close layers" /><div className="layers-menu"><div className="popover-caption">Connection layers</div>{EDGE_KINDS.map(kind => <label key={kind}><input type="checkbox" checked={edges.includes(kind)} onChange={() => { const next = edges.includes(kind) ? edges.filter(k => k !== kind) : [...edges, kind]; setEdges(next); scene.current?.setEdges(next); }} /><span>{edgeNames[kind]}</span><small>{number(map.edges.filter(e => e.kind === kind).length)}</small></label>)}<div className="render-options"><label><input type="checkbox" checked={renderSettings.glowEnabled} onChange={e => setRenderSettings(s => ({ ...s, glowEnabled: e.target.checked }))} /><span>Glow effects</span></label><div className="glow-slider"><span>Strength</span><input type="range" aria-label="Glow strength" min="0" max="2.5" step="0.05" value={renderSettings.glowStrength} disabled={!renderSettings.glowEnabled} onChange={e => setRenderSettings(s => ({ ...s, glowStrength: Number(e.target.value) }))} /><output>{renderSettings.glowStrength.toFixed(2)}</output></div><label><input type="checkbox" checked={renderSettings.autoPerformance} onChange={e => setRenderSettings(s => ({ ...s, autoPerformance: e.target.checked }))} /><span>Automatic performance</span></label><p className="render-note">{renderStatus.reduced ? 'Glow paused: sustained low frame rate.' : renderStatus.glowActive ? renderSettings.autoPerformance ? 'Glow turns off if rendering stays slow.' : 'Glow is on. Adjust its strength above.' : 'Glow is off. The map stays interactive.'}</p>{renderStatus.reduced && <button className="button subtle load-more" onClick={() => scene.current?.restoreGlow()}>Restore glow</button>}</div></div></>}
+            <div className="filter-wrap"><button className={`icon-button ${filters ? 'pressed' : ''}`} title="View settings: dependencies, layers and glow" aria-label="View settings" aria-expanded={filters} onClick={() => setFilters(v => !v)}><SlidersHorizontal size={16} /></button>
+              {filters && <><button className="dismiss-layer" tabIndex={-1} onClick={() => setFilters(false)} aria-label="Close layers" /><div className="layers-menu"><div className="popover-caption">Connection layers</div>{EDGE_KINDS.map(kind => <label key={kind}><input type="checkbox" checked={edges.includes(kind)} onChange={() => { const next = edges.includes(kind) ? edges.filter(k => k !== kind) : [...edges, kind]; setEdges(next); scene.current?.setEdges(next); }} /><span>{edgeNames[kind]}</span><small>{number(map.edges.filter(e => e.kind === kind).length)}</small></label>)}<div className="scan-options"><div className="popover-caption">Project code</div><label><input type="checkbox" checked={scanState.includeDependencies} disabled={busy || !scanState.canRescan} onChange={e => void changeDependencies(e.target.checked)} /><span>Show dependency code</span></label><p className="render-note">{!scanState.canRescan ? 'Open the project folder to change the contents of this saved map.' : scanState.includeDependencies ? 'Dependencies included. Turn off to simplify the map. Changing this rescans the project.' : `${number(map.scan?.excludedDependencyCount ?? 0)} dependency folders excluded. Turn on to include them and rescan.`}</p></div><div className="render-options"><label><input type="checkbox" checked={renderSettings.glowEnabled} onChange={e => setRenderSettings(s => ({ ...s, glowEnabled: e.target.checked }))} /><span>Glow effects</span></label><div className="glow-slider"><span>Strength</span><input type="range" aria-label="Glow strength" min="0" max="2.5" step="0.05" value={renderSettings.glowStrength} disabled={!renderSettings.glowEnabled} onChange={e => setRenderSettings(s => ({ ...s, glowStrength: Number(e.target.value) }))} /><output>{renderSettings.glowStrength.toFixed(2)}</output></div><label><input type="checkbox" checked={renderSettings.autoPerformance} onChange={e => setRenderSettings(s => ({ ...s, autoPerformance: e.target.checked }))} /><span>Automatic performance</span></label><p className="render-note">{renderStatus.reduced ? 'Glow paused: sustained low frame rate.' : renderStatus.glowActive ? renderSettings.autoPerformance ? 'Glow turns off if rendering stays slow.' : 'Glow is on. Adjust its strength above.' : 'Glow is off. The map stays interactive.'}</p>{renderStatus.reduced && <button className="button subtle load-more" onClick={() => scene.current?.restoreGlow()}>Restore glow</button>}</div></div></>}
             </div>
             <button className={`icon-button ${labels ? '' : 'off'}`} title={labels ? 'Hide labels' : 'Enable progressive labels'} aria-label="Toggle labels" aria-pressed={labels} onClick={() => { setLabels(v => !v); scene.current?.setLabels(!labels); }}><Type size={16} /></button>
           </div>
@@ -159,6 +172,7 @@ export default function App() {
         {issuesOpen ? <>
           <div className="inspector-intro"><h2>Analysis details</h2><p>What Sourcefield could resolve, and what still needs context.</p></div>
           <div className="report-summary"><div><strong>{number(map!.project.analyzed)}</strong><span>files analyzed</span></div><div><strong>{number(map!.project.ignored)}</strong><span>entries ignored</span></div></div>
+          {!!map?.scan?.excludedDependencyCount && <details className="excluded-folders"><summary>{number(map.scan.excludedDependencyCount)} dependency folders excluded</summary><p>Turn on Show dependency code in view settings to rescan with installed libraries.</p><ul>{map.scan.excludedDependencies.slice(0, 50).map(folder => <li key={folder.path}><strong>{folder.path}</strong><span>{folder.reason}</span></li>)}</ul>{map.scan.excludedDependencyCount > 50 && <p>Showing the first 50 excluded folders.</p>}</details>}
           <label className="report-filter"><span>Show</span><select value={issueKind} onChange={e => { setIssueKind(e.target.value); setIssueCount(100); }}><option value="all">All diagnostics</option><option value="unsupported">Unsupported files</option><option value="unresolved">Unresolved relationships</option><option value="external">External relationships</option><option value="parse">Syntax issues</option><option value="skipped">Skipped files</option><option value="limit">Limits</option></select></label>
           <div className="issues-list">{visibleIssues.slice(0, issueCount).map((i, index) => <IssueRow key={index} issue={i} onSelect={i.source && nodeIndex.has(i.source) ? () => choose(i.source!) : undefined} />)}{!visibleIssues.length && <p className="muted small">No diagnostics in this category.</p>}{visibleIssues.length > issueCount && <button className="button subtle load-more" onClick={() => setIssueCount(n => n + 100)}>Show 100 more<ChevronDown size={14} /></button>}</div>
         </> : node && <>

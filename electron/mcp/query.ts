@@ -55,6 +55,8 @@ export class ProjectQuery {
         for (const e of this.map.edges) edgeKinds[e.kind] = (edgeKinds[e.kind] ?? 0) + 1;
         for (const i of this.map.issues) issueKinds[i.kind] = (issueKinds[i.kind] ?? 0) + 1;
         result = { project: this.map.project, root: this.root, graph_created_at: this.map.createdAt,
+          scan_scope: this.map.scan ? { include_dependencies: this.map.scan.includeDependencies, excluded_dependency_folders: this.map.scan.excludedDependencyCount,
+            examples: this.map.scan.excludedDependencies.slice(0, 20), examples_truncated: this.map.scan.excludedDependencyCount > 20 } : null,
           source_mode: this.root ? 'local_files_with_scan_time_graph' : 'saved_map_previews', nodes: nodeKinds, relationships: edgeKinds, diagnostics: issueKinds,
           important_files: [...this.files.values()].sort((a, b) => b.degree - a.degree).slice(0, 10).map(n => this.summary(n)),
           guidance: 'Search names first, inspect calls/references, then read specific source ranges. Unresolved relationships and unsupported languages are not inferred. Rescan in Sourcefield after edits to refresh graph locations.' };

@@ -22,12 +22,19 @@ export interface ViewState {
   position: Vec3; target: Vec3; selected: string | null;
   visibleEdges: EdgeKind[]; labels: boolean;
 }
+export interface ScanOptions { includeDependencies: boolean }
+export interface ScanScope extends ScanOptions {
+  excludedDependencyCount: number;
+  excludedDependencies: { path: string; reason: string }[];
+}
+export interface ScanState extends ScanOptions { canRescan: boolean }
 export interface CodeMap {
   format: 'sourcefield.code-map'; version: 1; createdAt: string;
   project: { name: string; files: number; analyzed: number; languages: string[]; ignored: number };
   nodes: MapNode[]; edges: MapEdge[]; issues: Issue[];
   layout: { algorithm: 'spherical-graph-v1'; seed: number; radius: number };
   view?: ViewState;
+  scan?: ScanScope;
 }
 export interface ScanProgress { phase: string; detail: string; percent: number; files?: number; symbols?: number }
 export interface RemoteViewCommand {
@@ -43,6 +50,8 @@ export interface SourcefieldAPI {
   openMap(): Promise<ActionResult<CodeMap>>;
   exportMap(view: ViewState): Promise<ActionResult<{ name: string }>>;
   cancelScan(): Promise<void>;
+  getScanState(): Promise<ScanState>;
+  setIncludeDependencies(include: boolean): Promise<ActionResult<CodeMap>>;
   getMcpConfiguration(): Promise<McpConfiguration>;
   copyMcpConfiguration(client: 'claude' | 'codex'): Promise<void>;
   onRemoteView(callback: (command: RemoteViewCommand) => RemoteViewResult | Promise<RemoteViewResult>): () => void;

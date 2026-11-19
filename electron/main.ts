@@ -1,24 +1,35 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, clipboard } from 'electron';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { launchTarget } from './launch-target';
 import { ProjectQuery } from './mcp/query';
 import { startLocalBridge } from './mcp/bridge';
 import type { RemoteViewCommand, RemoteViewResult, McpConfiguration } from '../shared/types';
 import { Worker } from 'node:worker_threads';
-import type { ActionResult, CodeMap } from '../shared/types';
+import type { ActionResult, CodeMap, ScanOptions } from '../shared/types';
 import { readMap, validateView, writeMap } from './format';
 import { rememberWindowState, restoreWindowState } from './window-state';
 
 let window: BrowserWindow | null = null, activeMap: CodeMap | null = null, scanWorker: Worker | null = null;
 let pendingFile: string | undefined, pendingProject: string | undefined;
 let rendererReady = false;
+let activeRoot: string | null = null;
+let scanOptions: ScanOptions = { includeDependencies: false };
+function loadScanOptions() {
+  try { const value = JSON.parse(readFileSync(path.join(app.getPath('userData'), 'scan-settings.json'), 'utf8')); if (typeof value.includeDependencies === 'boolean') scanOptions = { includeDependencies: value.includeDependencies }; } catch { /* Default to project code. */ }
+}
+function rememberScanOptions(options: ScanOptions) {
+  scanOptions = options;
+  try { const directory = app.getPath('userData'); mkdirSync(directory, { recursive: true }); writeFileSync(path.join(directory, 'scan-settings.json'), JSON.stringify(options), { mode: 0o600 }); }
+  catch (error) { console.error('Unable to remember scan settings:', error); }
+}
 let openGeneration = 0;
 class SupersededOpen extends Error {};
 let projectQuery: ProjectQuery | null = null;
 let localBridge: Awaited<ReturnType<typeof startLocalBridge>> | null = null;
 const pendingViews = new Map<string, { resolve: (v: RemoteViewResult) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout>; projectId: string }>();
-function activateMap(map: CodeMap, root: string | null) { activeMap = map; projectQuery = new ProjectQuery(map, root); }
+function activateMap(map: CodeMap, root: string | null) { activeMap = map; activeRoot = root; projectQuery = new ProjectQuery(map, root); }
 let startupTask: Promise<ActionResult<CodeMap | null>> | null = null;
 const failure = (error: unknown): ActionResult<never> => ({ ok: false, error: error instanceof Error ? error.message : 'Something went wrong.', ...(error instanceof SupersededOpen ? { cancelled: true } : {}) });
 const cancel = (): ActionResult<never> => ({ ok: false, error: 'Cancelled', cancelled: true });
@@ -76,11 +87,11 @@ function createWindow() {
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
-function runScan(root: string) {
+function runScan(root: string, options: ScanOptions = scanOptions) {
   const generation = ++openGeneration;
   return new Promise<ActionResult<CodeMap>>(resolve => {
     let settled = false;
-    const worker = new Worker(path.join(__dirname, 'worker.cjs'), { workerData: { root: root } });
+    const worker = new Worker(path.join(__dirname, 'worker.cjs'), { workerData: { root, options } });
     scanWorker = worker;
     function finish(result: ActionResult<CodeMap>) {
       if (settled) return; settled = true;
@@ -88,7 +99,7 @@ function runScan(root: string) {
       worker.terminate(); resolve(result);
     }
     worker.on('message', message => {
-      if (message.type === 'progress') window?.webContents.send('sourcefield:progress', message.value);
+      if (message.type === 'progress' && generation === openGeneration) window?.webContents.send('sourcefield:progress', message.value);
       if (message.type === 'complete') { if (generation !== openGeneration) { finish(cancel()); return; } activateMap(message.value, path.resolve(root)); finish({ ok: true, value: message.value }); }
       if (message.type === 'error') finish(failure(new Error(message.error)));
     });
@@ -149,7 +160,23 @@ ipcMain.handle('sourcefield:folder', async event => {
   if (selected.canceled || !selected.filePaths[0]) return cancel();
   return runScan(selected.filePaths[0]);
 });
-ipcMain.handle('sourcefield:cancel', async event => { trusted(event); const worker = scanWorker; scanWorker = null; if (worker) await worker.terminate(); });
+ipcMain.handle('sourcefield:cancel', async event => { trusted(event); ++openGeneration; const worker = scanWorker; scanWorker = null; if (worker) await worker.terminate(); });
+ipcMain.handle('sourcefield:scan-state', event => {
+  trusted(event); return { includeDependencies: activeMap ? activeMap.scan?.includeDependencies ?? false : scanOptions.includeDependencies, canRescan: !!activeRoot };
+});
+ipcMain.handle('sourcefield:dependencies', async (event, include: unknown) => {
+  trusted(event);
+  if (typeof include !== 'boolean') return failure(new Error('Invalid dependency setting.'));
+  if (scanWorker) return failure(new Error('Finish or cancel the current scan first.'));
+  if (!activeRoot) return failure(new Error('Open the project folder to change which code is scanned. Saved maps only contain their exported nodes.'));
+  try {
+    const options = { includeDependencies: include };
+    const result = await runScan(activeRoot, options);
+    // A failed, cancelled or superseded scan must not change the saved preference.
+    if (result.ok && activeMap === result.value) rememberScanOptions(options);
+    return result;
+  } catch (error) { return failure(error); }
+});
 ipcMain.handle('sourcefield:open', async event => {
   trusted(event); if (!window) return cancel();
   try {
@@ -190,6 +217,7 @@ else {
     void openExternalTarget(launchTarget(argv, workingDirectory, app.isPackaged));
   });
   app.whenReady().then(async () => {
+    loadScanOptions();
     try {
       localBridge = await startLocalBridge(async (name, args) => {
         const project = projectQuery;

@@ -211,3 +211,9 @@ copy. It checks all ten tools, real cross-file callers, source ranges,
 pagination, view-command acknowledgement through a renderer stub, scope and
 authentication failures, offline map previews, stale project IDs, and Explorer
 argument parsing. It does not log in to or automate the Claude or ChatGPT apps.
+
+## Dependency scan scope
+
+Installed dependency folders are excluded by default. `sourcefield_project_overview` returns `scan_scope` with the inclusion setting, excluded-folder count and up to 20 example paths/reasons (or null for older maps). Symbol and source searches cover the scanned inventory. Excluded libraries may appear as external/unresolved targets, not searchable source nodes.
+
+In the desktop app, View settings → Show dependency code rescans the open folder to include recognized dependency roots. A successful rescan changes the project ID; clients must obtain the new ID. The setting and bounded exclusion report survive map export/reopen. An offline saved map cannot add files that were never exported.

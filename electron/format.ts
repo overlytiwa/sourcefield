@@ -28,6 +28,12 @@ export function validateMap(value: unknown): CodeMap {
     || !Array.isArray(value.project.languages) || value.project.languages.length > 100 || !value.project.languages.every((l: unknown) => text(l, 100))) throw new Error('Invalid project metadata.');
   if (!Array.isArray(value.nodes) || value.nodes.length > 220000 || !Array.isArray(value.edges) || value.edges.length > 1200000 || !Array.isArray(value.issues) || value.issues.length > 200002) throw new Error('The map exceeds the supported graph limits.');
   if (!isRecord(value.layout) || value.layout.algorithm !== 'spherical-graph-v1' || !Number.isFinite(value.layout.seed) || !Number.isFinite(value.layout.radius) || value.layout.radius <= 0 || value.layout.radius > 1e7) throw new Error('Invalid map layout.');
+  if (value.scan !== undefined) {
+    const s = value.scan;
+    if (!isRecord(s) || typeof s.includeDependencies !== 'boolean' || !Number.isSafeInteger(s.excludedDependencyCount) || s.excludedDependencyCount < 0
+      || !Array.isArray(s.excludedDependencies) || s.excludedDependencies.length > 1000 || s.excludedDependencies.length > s.excludedDependencyCount
+      || !s.excludedDependencies.every((d: unknown) => isRecord(d) && safePath(d.path) && text(d.reason, 500))) throw new Error('Invalid scan scope.');
+  }
   const ids = new Set<string>();
   const parents = new Map<string, string>();
   for (const n of value.nodes) {
