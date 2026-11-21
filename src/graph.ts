@@ -14,6 +14,7 @@ import {
   type RemoteViewResult,
 } from "../shared/types";
 import { pickNodeAtPixel } from "./picking";
+import { graphDetail, DETAIL_LIMITS, type GraphDetail } from "./graph-detail";
 import {
   defaultRenderSettings,
   PerformanceMonitor,
@@ -42,7 +43,17 @@ export class GraphScene {
   private lines = new Map<EdgeKind, THREE.LineSegments>();
   private highlight: THREE.LineSegments | null = null;
   private index = new Map<string, number>();
-  private adjacent = new Map<string, Set<string>>();
+  private detail: GraphDetail | null = null;
+  private drawnNodes: number[] = [];
+  private connected = new Set<string>();
+  private detailDirty = true;
+  private lastDetailTime = 0;
+  private interacting = false;
+  private lastCameraChange = 0;
+  private detailMoving = false;
+  private active = true;
+  private drawnEdges = 0;
+  private statusKey = "";
   private selected: string | null = null;
   private emphasized = new Set<string>();
   private visibleEdges = new Set<EdgeKind>(EDGE_KINDS);
@@ -71,6 +82,11 @@ export class GraphScene {
   private lastPick = 0;
   private invalidate = () => {
     this.dirty = true;
+    this.detailDirty = true;
+  };
+  private cameraChanged = () => {
+    this.lastCameraChange = performance.now();
+    this.invalidate();
   };
   constructor(
     private host: HTMLElement,
@@ -108,7 +124,9 @@ export class GraphScene {
     this.controls.panSpeed = 0.65;
     this.controls.zoomSpeed = 0.8;
     this.controls.addEventListener("start", this.stopAnimation);
-    this.controls.addEventListener("change", this.invalidate);
+    this.controls.addEventListener("start", this.startInteraction);
+    this.controls.addEventListener("end", this.endInteraction);
+    this.controls.addEventListener("change", this.cameraChanged);
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.72, 0.42, 0.18);
@@ -129,8 +147,19 @@ export class GraphScene {
   private stopAnimation = () => {
     this.animation = undefined;
   };
+  private startInteraction = () => {
+    this.interacting = true;
+    this.invalidate();
+  };
+  private endInteraction = () => {
+    this.interacting = false;
+    this.lastDetailTime = 0;
+    this.invalidate();
+  };
   private resizeCanvas = () => {
     this.dirty = true;
+    this.detailDirty = true;
+    this.lastDetailTime = 0;
     this.width = Math.max(1, this.host.clientWidth);
     this.height = Math.max(1, this.host.clientHeight);
     this.renderer.setSize(this.width, this.height);
@@ -142,43 +171,27 @@ export class GraphScene {
     this.labels.height = this.height * dpr;
     this.context.setTransform(dpr, 0, 0, dpr, 0, 0);
   };
-  load(map: CodeMap) {
+  load(map: CodeMap, nodeIds: string[] | null = null) {
     this.dirty = true;
     this.clear();
     this.map = map;
     this.selected = null;
     this.performanceMonitor.reset(performance.now());
     this.lastFrame = 0;
-    this.index = new Map(map.nodes.map((n, i) => [n.id, i]));
-    for (const e of map.edges) {
-      if (!this.adjacent.has(e.source)) this.adjacent.set(e.source, new Set());
-      if (!this.adjacent.has(e.target)) this.adjacent.set(e.target, new Set());
-      this.adjacent.get(e.source)!.add(e.target);
-      this.adjacent.get(e.target)!.add(e.source);
-    }
-    this.labelCandidates = map.nodes
-      .map((_n, i) => i)
-      .sort((a, b) => {
-        const order = (n: MapNode) =>
-          n.kind === "folder" ? 100000 : n.kind === "file" ? 50000 : 0;
-        return (
-          order(map.nodes[b]) +
-          map.nodes[b].degree -
-          order(map.nodes[a]) -
-          map.nodes[a].degree
-        );
-      });
-    const positions = new Float32Array(map.nodes.length * 3),
-      sizes = new Float32Array(map.nodes.length),
-      brightness = new Float32Array(map.nodes.length);
-    map.nodes.forEach((n, i) => {
-      positions.set(n.position, i * 3);
-      sizes[i] =
-        (n.kind === "folder" ? 9 : n.kind === "file" ? 7 : 4.6) +
-        Math.log2(n.degree + 1) * 1.25;
-      brightness[i] =
-        n.status === "unsupported" || n.status === "skipped" ? 0.38 : 1;
-    });
+    this.detail = graphDetail(map);
+    this.index = this.detail.byId;
+    this.detail.setScope(nodeIds);
+    this.detailDirty = true;
+    this.lastDetailTime = 0;
+    const pixelRatio = Math.min(
+      window.devicePixelRatio,
+      map.nodes.length > 10000 || map.edges.length > 50000 ? 1.25 : 2,
+    );
+    this.renderer.setPixelRatio(pixelRatio);
+    this.composer.setPixelRatio(pixelRatio);
+    const positions = new Float32Array(DETAIL_LIMITS.nodes * 3),
+      sizes = new Float32Array(DETAIL_LIMITS.nodes),
+      brightness = new Float32Array(DETAIL_LIMITS.nodes);
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute("aSize", new THREE.BufferAttribute(sizes, 1));
@@ -186,10 +199,13 @@ export class GraphScene {
       "aBrightness",
       new THREE.BufferAttribute(brightness, 1),
     );
+    geometry.setDrawRange(0, 0);
+    for (const attribute of Object.values(geometry.attributes))
+      (attribute as THREE.BufferAttribute).setUsage(THREE.DynamicDrawUsage);
     const material = new THREE.ShaderMaterial({
       uniforms: {
         uScale: { value: map.layout.radius * 4.1 },
-        uPixelRatio: { value: Math.min(window.devicePixelRatio, 2) },
+        uPixelRatio: { value: pixelRatio },
         uGlow: {
           value: this.glowActive ? this.renderSettings.glowStrength / 0.72 : 0,
         },
@@ -211,14 +227,13 @@ export class GraphScene {
     this.points.frustumCulled = false;
     this.scene.add(this.points);
     for (const kind of EDGE_KINDS) {
-      const edges = map.edges.filter((e) => e.kind === kind),
-        vertices = new Float32Array(edges.length * 6);
-      edges.forEach((e, i) => {
-        vertices.set(map.nodes[this.index.get(e.source)!].position, i * 6);
-        vertices.set(map.nodes[this.index.get(e.target)!].position, i * 6 + 3);
-      });
+      const vertices = new Float32Array(DETAIL_LIMITS.edges * 6);
       const g = new THREE.BufferGeometry();
-      g.setAttribute("position", new THREE.BufferAttribute(vertices, 3));
+      g.setAttribute(
+        "position",
+        new THREE.BufferAttribute(vertices, 3).setUsage(THREE.DynamicDrawUsage),
+      );
+      g.setDrawRange(0, 0);
       const line = new THREE.LineSegments(
         g,
         new THREE.LineBasicMaterial({
@@ -234,6 +249,28 @@ export class GraphScene {
       this.lines.set(kind, line);
       this.scene.add(line);
     }
+    const highlightGeometry = new THREE.BufferGeometry();
+    highlightGeometry.setAttribute(
+      "position",
+      new THREE.BufferAttribute(
+        new Float32Array(DETAIL_LIMITS.edges * 6),
+        3,
+      ).setUsage(THREE.DynamicDrawUsage),
+    );
+    highlightGeometry.setDrawRange(0, 0);
+    this.highlight = new THREE.LineSegments(
+      highlightGeometry,
+      new THREE.LineBasicMaterial({
+        color: 0xffb05d,
+        transparent: true,
+        opacity: 0.65,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        depthTest: false,
+      }),
+    );
+    this.highlight.frustumCulled = false;
+    this.scene.add(this.highlight);
     this.controls.minDistance = map.layout.radius * 0.025;
     this.controls.maxDistance = map.layout.radius * 14;
     this.camera.near = Math.max(0.01, map.layout.radius * 0.0005);
@@ -301,31 +338,12 @@ export class GraphScene {
     this.refreshEmphasis();
   }
   private refreshEmphasis() {
-    this.dirty = true;
-    if (!this.points || !this.map) return;
+    this.invalidate();
     const anchors = new Set(this.selected ? [this.selected] : this.emphasized);
-    const attribute = this.points.geometry.getAttribute(
-      "aBrightness",
-    ) as THREE.BufferAttribute;
-    const connected = new Set<string>();
+    this.connected.clear();
     for (const id of anchors)
-      for (const neighbor of this.adjacent.get(id) ?? [])
-        connected.add(neighbor);
-    this.map.nodes.forEach((n, i) =>
-      attribute.setX(
-        i,
-        !anchors.size
-          ? n.status === "unsupported" || n.status === "skipped"
-            ? 0.38
-            : 1
-          : anchors.has(n.id)
-            ? 2
-            : connected.has(n.id)
-              ? 1
-              : 0.12,
-      ),
-    );
-    attribute.needsUpdate = true;
+      for (const neighbor of this.detail?.neighbors(id) ?? [])
+        this.connected.add(neighbor);
     for (const [kind, line] of this.lines)
       (line.material as THREE.LineBasicMaterial).opacity = anchors.size
         ? 0.027
@@ -335,41 +353,105 @@ export class GraphScene {
     this.updateHighlight();
   }
   private updateHighlight() {
-    if (this.highlight) {
-      this.scene.remove(this.highlight);
-      this.highlight.geometry.dispose();
-      (this.highlight.material as THREE.Material).dispose();
-      this.highlight = null;
+    this.invalidate();
+  }
+  setScope(ids: string[] | null) {
+    this.detail?.setScope(ids);
+    this.lastDetailTime = 0;
+    this.invalidate();
+  }
+  setActive(active: boolean) {
+    this.active = active;
+    if (active) {
+      this.lastFrame = 0;
+      this.invalidate();
     }
+  }
+  private updateDetail(now: number, moving: boolean) {
+    if (!this.map || !this.detail || !this.points || !this.highlight) return;
     const anchors = new Set(this.selected ? [this.selected] : this.emphasized);
-    if (!anchors.size || !this.map) return;
-    const edges = this.map.edges.filter(
-      (e) =>
-        (anchors.has(e.source) || anchors.has(e.target)) &&
-        this.visibleEdges.has(e.kind),
+    const plan = this.detail.plan(
+      this.camera,
+      this.width,
+      this.height,
+      this.visibleEdges,
+      anchors,
+      moving,
     );
-    const vertices = new Float32Array(edges.length * 6);
-    edges.forEach((e, i) => {
-      vertices.set(this.map!.nodes[this.index.get(e.source)!].position, i * 6);
-      vertices.set(
-        this.map!.nodes[this.index.get(e.target)!].position,
-        i * 6 + 3,
+    this.drawnNodes = plan.nodes;
+    this.drawnEdges = plan.edges.length;
+    this.labelCandidates = plan.nodes.slice(0, moving ? 400 : 1000);
+    const geometry = this.points.geometry;
+    const positions = geometry.getAttribute(
+      "position",
+    ) as THREE.BufferAttribute;
+    const sizes = geometry.getAttribute("aSize") as THREE.BufferAttribute;
+    const brightness = geometry.getAttribute(
+      "aBrightness",
+    ) as THREE.BufferAttribute;
+    plan.nodes.forEach((index, slot) => {
+      const node = this.map!.nodes[index];
+      (positions.array as Float32Array).set(node.position, slot * 3);
+      sizes.setX(
+        slot,
+        (node.kind === "folder" ? 9 : node.kind === "file" ? 7 : 4.6) +
+          Math.log2(node.degree + 1) * 1.25,
+      );
+      brightness.setX(
+        slot,
+        !anchors.size
+          ? node.status === "unsupported" || node.status === "skipped"
+            ? 0.38
+            : 1
+          : anchors.has(node.id)
+            ? 2
+            : this.connected.has(node.id)
+              ? 1
+              : 0.12,
       );
     });
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.BufferAttribute(vertices, 3));
-    this.highlight = new THREE.LineSegments(
-      g,
-      new THREE.LineBasicMaterial({
-        color: 0xffb05d,
-        transparent: true,
-        opacity: 0.65,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        depthTest: false,
-      }),
-    );
-    this.scene.add(this.highlight);
+    geometry.setDrawRange(0, plan.nodes.length);
+    for (const attribute of [positions, sizes, brightness]) {
+      attribute.clearUpdateRanges();
+      attribute.addUpdateRange(0, plan.nodes.length * attribute.itemSize);
+      attribute.needsUpdate = true;
+    }
+    const counts = new Map<THREE.LineSegments, number>();
+    for (const line of this.lines.values()) counts.set(line, 0);
+    counts.set(this.highlight, 0);
+    for (const index of plan.edges) {
+      const edge = this.map.edges[index];
+      const line =
+        anchors.has(edge.source) || anchors.has(edge.target)
+          ? this.highlight
+          : this.lines.get(edge.kind)!;
+      const count = counts.get(line)!;
+      const vertices = line.geometry.getAttribute("position")
+        .array as Float32Array;
+      vertices.set(
+        this.map.nodes[this.index.get(edge.source)!].position,
+        count * 6,
+      );
+      vertices.set(
+        this.map.nodes[this.index.get(edge.target)!].position,
+        count * 6 + 3,
+      );
+      counts.set(line, count + 1);
+    }
+    for (const [line, count] of counts) {
+      line.geometry.setDrawRange(0, count * 2);
+      const attribute = line.geometry.getAttribute(
+        "position",
+      ) as THREE.BufferAttribute;
+      attribute.clearUpdateRanges();
+      attribute.addUpdateRange(0, count * 6);
+      attribute.needsUpdate = true;
+    }
+    this.detailMoving = moving;
+    this.detailDirty = false;
+    this.lastDetailTime = now;
+    this.lastLabelTime = 0;
+    this.emitStatus();
   }
   setEdges(kinds: EdgeKind[]) {
     this.dirty = true;
@@ -409,7 +491,22 @@ export class GraphScene {
         .glowActive
         ? this.renderSettings.glowStrength / 0.72
         : 0;
-    this.onRenderStatus({ glowActive: this.glowActive, reduced: this.reduced });
+    this.emitStatus();
+  }
+  private emitStatus() {
+    const status = {
+      glowActive: this.glowActive,
+      reduced: this.reduced,
+      visibleNodes: this.drawnNodes?.length ?? 0,
+      visibleConnections: this.drawnEdges ?? 0,
+      totalNodes: this.map?.nodes.length ?? 0,
+      totalConnections: this.map?.edges.length ?? 0,
+    };
+    const key = JSON.stringify(status);
+    if (key !== this.statusKey) {
+      this.statusKey = key;
+      this.onRenderStatus(status);
+    }
   }
   zoom(amount: number) {
     const direction = this.camera.position.clone().sub(this.controls.target);
@@ -426,6 +523,18 @@ export class GraphScene {
       visibleEdges: [...this.visibleEdges],
       labels: this.showLabels,
     };
+  }
+  restore(view: ViewState) {
+    this.stopAnimation();
+    this.camera.position.fromArray(view.position);
+    this.controls.target.fromArray(view.target);
+    this.setSelected(
+      view.selected && this.index.has(view.selected) ? view.selected : null,
+    );
+    this.setEdges(view.visibleEdges);
+    this.setLabels(view.labels);
+    this.controls.update();
+    this.invalidate();
   }
   applyRemote(command: RemoteViewCommand): RemoteViewResult {
     if (!this.map)
@@ -481,6 +590,7 @@ export class GraphScene {
       x,
       y,
       this.map.layout.radius,
+      this.drawnNodes,
     );
     if (point !== null) return point;
     // Visible names are also selection targets, so small symbols are accessible.
@@ -526,7 +636,7 @@ export class GraphScene {
     this.onHover(null, 0, 0);
   };
   private drawLabels(now: number) {
-    if (now - this.lastLabelTime < 40) return;
+    if (now - this.lastLabelTime < 60) return;
     this.lastLabelTime = now;
     const ctx = this.context;
     ctx.clearRect(0, 0, this.width, this.height);
@@ -543,7 +653,9 @@ export class GraphScene {
       return;
     }
     const candidates =
-      this.selected && this.index.has(this.selected)
+      this.selected &&
+      this.index.has(this.selected) &&
+      this.drawnNodes.includes(this.index.get(this.selected)!)
         ? [
             this.index.get(this.selected)!,
             ...this.labelCandidates.filter(
@@ -569,7 +681,13 @@ export class GraphScene {
         wideOpacity;
       if (active) alpha = wideOpacity;
       if (alpha <= 0.03) continue;
-      if (world.clone().sub(this.camera.position).dot(direction) <= 0) continue;
+      if (
+        (world.x - this.camera.position.x) * direction.x +
+          (world.y - this.camera.position.y) * direction.y +
+          (world.z - this.camera.position.z) * direction.z <=
+        0
+      )
+        continue;
       projected.copy(world).project(this.camera);
       if (projected.z < -1 || projected.z > 1) continue;
       const x = (projected.x * 0.5 + 0.5) * this.width + 8,
@@ -597,11 +715,7 @@ export class GraphScene {
       rectangles.push(box);
       ctx.globalAlpha =
         alpha *
-        (this.selected &&
-        !active &&
-        !this.adjacent.get(this.selected)?.has(node.id)
-          ? 0.5
-          : 1);
+        (this.selected && !active && !this.connected.has(node.id) ? 0.5 : 1);
       if (ctx.globalAlpha > 0.15)
         this.labelTargets.push({ index, bounds: box });
       ctx.lineWidth = 3.5;
@@ -623,6 +737,7 @@ export class GraphScene {
   private tick = () => {
     if (this.disposed) return;
     this.frame = requestAnimationFrame(this.tick);
+    if (!this.active) return;
     const now = performance.now();
     if (
       this.lastFrame &&
@@ -658,17 +773,27 @@ export class GraphScene {
       if (t === 1) this.animation = undefined;
     }
     this.controls.update();
+    const moving =
+      this.interacting || !!this.animation || now - this.lastCameraChange < 100;
+    if (this.detailMoving && !moving) this.invalidate();
+    if (this.detailDirty && (!moving || now - this.lastDetailTime >= 100))
+      this.dirty = true;
     if (this.dirty && document.visibilityState === "visible") {
+      if (this.detailDirty && (!moving || now - this.lastDetailTime >= 100))
+        this.updateDetail(now, moving);
       this.composer.render();
-      this.lastLabelTime = 0;
+      if (!moving) this.lastLabelTime = 0;
       this.drawLabels(now);
       this.dirty = false;
     }
   };
   private clear() {
     this.animation = undefined;
-    this.adjacent.clear();
-    this.index.clear();
+    this.index = new Map();
+    this.connected.clear();
+    this.drawnNodes = [];
+    this.drawnEdges = 0;
+    this.detail = null;
     this.emphasized.clear();
     for (const item of [...this.scene.children]) {
       this.scene.remove(item);
@@ -692,7 +817,9 @@ export class GraphScene {
     this.resize.disconnect();
     this.clear();
     this.controls.removeEventListener("start", this.stopAnimation);
-    this.controls.removeEventListener("change", this.invalidate);
+    this.controls.removeEventListener("start", this.startInteraction);
+    this.controls.removeEventListener("end", this.endInteraction);
+    this.controls.removeEventListener("change", this.cameraChanged);
     this.controls.dispose();
     this.renderer.domElement.removeEventListener(
       "pointerdown",

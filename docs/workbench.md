@@ -89,8 +89,19 @@ is reported in Activity. On refresh, unchanged language-analysis groups are
 reused by content hash; a changed group is reanalyzed as a whole to keep its
 relationships consistent. This is group-level incremental reuse, not per-symbol
 incremental type checking. Stable positions, camera and valid selections survive.
-The 3D renderer redraws during interaction/animation and when state changes,
-and skips stationary scene renders. Picking is throttled to 25 checks per second.
+The 3D renderer uses a spatial hierarchy, viewport culling and screen-space
+detail selection. It submits at most 6,000 nodes and 8,000 connections when
+settled, or 2,000 nodes and 2,500 connections while moving. Selected code and
+its immediate relationships take priority; further detail appears when zooming.
+Only real graph edges between rendered nodes are drawn. The displayed counts
+describe the rendered subset, not the size of the analysis graph. Inspectors,
+search, MCP and snapshots retain all analyzed nodes and relationships.
+
+Geometry buffers are reused as the camera moves. Picking examines only drawn
+nodes, label candidates are bounded, and scope/navigation changes reuse the
+relationship index rather than rebuilding all geometry. The renderer skips
+stationary scene renders and pauses 3D drawing while the flat view is active.
+Picking is throttled to 25 checks per second.
 
 ## Architecture
 

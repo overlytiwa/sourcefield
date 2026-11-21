@@ -24,5 +24,12 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run test:core
+      - name: Check Windows installer and terminal launcher packaging
+        if: runner.os == 'Windows'
+        run: |
+          node scripts/package.mjs --win --publish never
+          if (!(Test-Path release/win-unpacked/sourcefield.cmd)) { throw 'Terminal launcher is missing from the package' }
+          if (!(Test-Path release/win-unpacked/sourcefield-path.ps1)) { throw 'Terminal registration helper is missing from the package' }
+          if (!(Test-Path release/win-unpacked/resources/skills/sourcefield/SKILL.md)) { throw 'Sourcefield skill is missing from the package' }
       - run: xvfb-run -a npm run smoke:desktop
         if: runner.os == 'Linux'

@@ -1346,3 +1346,17 @@ button:active:not(:disabled) {
 .workbench-fields:disabled {
   opacity: 0.7;
 }
+.graph-detail {
+  position: absolute;
+  left: 18px;
+  bottom: 14px;
+  max-width: min(520px, calc(100% - 36px));
+  margin: 0;
+  padding: 8px 11px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #b5aa9b;
+  font-size: 11px;
+  line-height: 1.5;
+  pointer-events: none;
+}

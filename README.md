@@ -129,6 +129,12 @@ Point selection uses the visible screen position and a click target that scales 
 
 ### Choose a view and scope
 
+Large maps use progressive detail: the 3D view draws a spatially selected subset
+of visible code, then reveals more detail as you zoom in. Selecting code gives
+its immediate connections priority. The view shows how many nodes and
+connections are currently drawn. Search, the inspector, MCP and exported maps
+still use the complete analysis. Switching to the flat view pauses 3D drawing.
+
 The map starts in **Structure** scope with folders and files. Use **All symbols** to reveal declarations, or **Focused code** to inspect the code selected by a workbench action. Selecting a search result reveals its direct neighborhood.
 
 The network button switches between the 3D overview and a directed flat map. Flat-view arrows point from source to target, with relationship labels. The flat view shows up to 160 nodes and 500 relationships; narrow the selection to inspect larger areas in steps.

@@ -35,6 +35,7 @@ import {
   type RenderStatus,
 } from "./render-settings";
 import { GraphScene } from "./graph";
+import { graphDetail } from "./graph-detail";
 import { Workbench } from "./components/Workbench";
 import { FlatGraph } from "./components/FlatGraph";
 import { McpSetup } from "./components/McpSetup";
@@ -129,6 +130,7 @@ export default function App() {
     searchInput = useRef<HTMLInputElement>(null);
   const refreshInFlight = useRef<Promise<boolean> | null>(null);
   const lastAutoAttempt = useRef<string[] | null>(null);
+  const renderedMap = useRef<CodeMap | null>(null);
   const actions = useRef({
     openFolder: () => {},
     openMap: () => {},
@@ -139,6 +141,10 @@ export default function App() {
     [map],
   );
   const node = selected ? nodeIndex.get(selected) : undefined;
+  const relationshipIndex = useMemo(
+    () => (map ? graphDetail(map) : null),
+    [map],
+  );
   const acceptMap = useCallback((value: CodeMap, preserve = false) => {
     if (preserve && scene.current) {
       const view = scene.current.capture();
@@ -163,7 +169,6 @@ export default function App() {
     setBusy(false);
     setProgress(null);
     setMessage("");
-    scene.current?.load(value);
     setScanState({
       includeDependencies: value.scan?.includeDependencies ?? false,
       canRescan: false,
@@ -421,17 +426,19 @@ export default function App() {
   }, [map, scope, focusIds]);
   useEffect(() => {
     if (!visibleMap || !scene.current) return;
-    const view = scene.current.capture();
-    scene.current.load({
-      ...visibleMap,
-      view: {
-        ...view,
-        selected: visibleMap.nodes.some((n) => n.id === selected)
-          ? selected
-          : null,
-      },
-    });
+    const ids =
+      scope === "all" ? null : visibleMap.nodes.map((node) => node.id);
+    if (renderedMap.current !== map) {
+      scene.current.load(map!, ids);
+      renderedMap.current = map;
+    } else scene.current.setScope(ids);
+    const target = visibleMap.nodes.some((node) => node.id === selected)
+      ? selected
+      : null;
+    if (scene.current.capture().selected !== target)
+      scene.current.setSelected(target);
   }, [visibleMap]);
+  useEffect(() => scene.current?.setActive(!flat), [flat]);
   function focusNodes(ids: string[]) {
     setFocusIds([...new Set(ids)].slice(0, 500));
     setScope("focus");
@@ -441,13 +448,8 @@ export default function App() {
     setIssuesOpen(false);
     setSearchOpen(false);
     if (scope !== "all") {
-      const neighbors =
-        map?.edges
-          .filter((e) => e.source === id || e.target === id)
-          .flatMap((e) => [e.source, e.target]) ?? [];
+      const neighbors = [...(relationshipIndex?.neighbors(id) ?? [])];
       focusNodes([id, ...neighbors]);
-      if (map && scene.current)
-        scene.current.load({ ...map, view: scene.current.capture() });
     }
     scene.current?.focus(id);
   }
@@ -458,7 +460,7 @@ export default function App() {
       );
     if (command.node_id || command.node_ids) {
       setScope("all");
-      scene.current.load({ ...map, view: scene.current.capture() });
+      scene.current.setScope(null);
     }
     const result = scene.current.applyRemote(command);
     if (command.action !== "inspect") {
@@ -506,13 +508,10 @@ export default function App() {
   }, [map, query]);
   const connections = useMemo(
     () =>
-      map?.edges
-        .filter((e) => e.source === selected || e.target === selected)
-        .sort(
-          (a, b) =>
-            (a.kind === "calls" ? -1 : 0) - (b.kind === "calls" ? -1 : 0),
-        ) ?? [],
-    [map, selected],
+      (selected ? relationshipIndex?.connections(selected) : [])?.sort(
+        (a, b) => (a.kind === "calls" ? -1 : 0) - (b.kind === "calls" ? -1 : 0),
+      ) ?? [],
+    [relationshipIndex, selected],
   );
   const visibleIssues = useMemo(
     () =>
@@ -699,7 +698,8 @@ export default function App() {
             capture={() => scene.current?.capture()}
             onRestore={(view) => {
               setScope("all");
-              scene.current?.load({ ...map, view });
+              scene.current?.setScope(null);
+              scene.current?.restore(view);
               setSelected(view.selected);
               setEdges(view.visibleEdges);
               setLabels(view.labels);
@@ -714,6 +714,19 @@ export default function App() {
             ref={host}
             style={{ visibility: flat ? "hidden" : "visible" }}
           />
+          {!flat &&
+            map &&
+            renderStatus.visibleNodes !== undefined &&
+            ((renderStatus.visibleNodes ?? 0) < map.nodes.length ||
+              (renderStatus.visibleConnections ?? 0) < map.edges.length) && (
+              <p className="graph-detail" role="status">
+                Showing {number(renderStatus.visibleNodes)} of{" "}
+                {number(map.nodes.length)} nodes and{" "}
+                {number(renderStatus.visibleConnections ?? 0)} of{" "}
+                {number(map.edges.length)} connections. Zoom in or select code
+                for more detail.
+              </p>
+            )}
           {flat && visibleMap && (
             <FlatGraph map={visibleMap} selected={selected} onSelect={choose} />
           )}
