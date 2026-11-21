@@ -22,6 +22,7 @@ import { Worker } from "node:worker_threads";
 import type { ActionResult, CodeMap, ScanOptions } from "../shared/types";
 import { readMap, validateView, writeMap } from "./format";
 import { promises as fs } from "node:fs";
+import { collectScan } from "./scan-task";
 import { startUpdates } from "./updates";
 import { Workbench } from "./workbench/service";
 import { background } from "./tasks";
@@ -77,16 +78,26 @@ const pendingViews = new Map<
 >();
 let workbench: Workbench | null = null;
 let stopUpdates = () => {};
-async function activateMap(map: CodeMap, root: string | null) {
-  if (workbench && workbench.root === root && root) workbench.replace(map);
+async function activateMap(
+  map: CodeMap,
+  root: string | null,
+  generation = openGeneration,
+) {
+  const previous = workbench;
+  const next =
+    previous && previous.root === root && root
+      ? previous
+      : await Workbench.open(map, root, app.getPath("userData"), (value) =>
+          window?.webContents.send("sourcefield:dirty", value),
+        );
+  if (generation !== openGeneration) {
+    if (next !== previous) await next.close();
+    throw new SupersededOpen("A newer project was opened.");
+  }
+  if (next === previous) next.replace(map);
   else {
-    workbench?.close();
-    workbench = await Workbench.open(
-      map,
-      root,
-      app.getPath("userData"),
-      (value) => window?.webContents.send("sourcefield:dirty", value),
-    );
+    workbench = next;
+    void previous?.close();
   }
   activeMap = map;
   activeRoot = root;
@@ -121,7 +132,7 @@ async function importFile(file: string) {
   const value = await background<CodeMap>({ task: "read", file });
   if (generation !== openGeneration)
     throw new SupersededOpen("A newer project or map was opened.");
-  await activateMap(value, null);
+  await activateMap(value, null, generation);
   return value;
 }
 function createWindow() {
@@ -254,45 +265,21 @@ function createWindow() {
 }
 function runScan(root: string, options: ScanOptions = scanOptions) {
   const generation = ++openGeneration;
-  return new Promise<ActionResult<CodeMap>>((resolve) => {
-    let settled = false;
-    const worker = new Worker(path.join(__dirname, "worker.cjs"), {
-      workerData: {
-        root,
-        options,
-        previous: activeRoot === path.resolve(root) ? activeMap : undefined,
-      },
-    });
-    scanWorker = worker;
-    function finish(result: ActionResult<CodeMap>) {
-      if (settled) return;
-      settled = true;
-      if (scanWorker === worker) scanWorker = null;
-      worker.terminate();
-      resolve(result);
-    }
-    worker.on("message", async (message) => {
-      if (message.type === "progress" && generation === openGeneration)
-        window?.webContents.send("sourcefield:progress", message.value);
-      if (message.type === "complete") {
-        if (generation !== openGeneration) {
-          finish(cancel());
-          return;
-        }
-        await activateMap(message.value, path.resolve(root));
-        finish({ ok: true, value: message.value });
-      }
-      if (message.type === "error") finish(failure(new Error(message.error)));
-    });
-    worker.on("error", (error) => finish(failure(error)));
-    worker.on("exit", (code) => {
-      if (!settled)
-        finish(
-          scanWorker !== worker || code === 0
-            ? cancel()
-            : failure(new Error("The scan stopped. Try a smaller project.")),
-        );
-    });
+  const worker = new Worker(path.join(__dirname, "worker.cjs"), {
+    workerData: {
+      root,
+      options,
+      previous: activeRoot === path.resolve(root) ? activeMap : undefined,
+    },
+  });
+  scanWorker = worker;
+  return collectScan(
+    worker,
+    () => generation === openGeneration,
+    (map) => activateMap(map, path.resolve(root), generation),
+    (value) => window?.webContents.send("sourcefield:progress", value),
+  ).finally(() => {
+    if (scanWorker === worker) scanWorker = null;
   });
 }
 function requestRemoteView(command: RemoteViewCommand, projectId: string) {

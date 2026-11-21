@@ -24,7 +24,8 @@
     "smoke:workbench": "node scripts/workbench-smoke.mjs",
     "test:core": "npm run smoke && npm run smoke:dependencies && npm run smoke:render && npm run smoke:mcp && npm run smoke:workbench && npm run smoke:ui",
     "smoke:ui": "node scripts/ui-smoke.mjs",
-    "format": "prettier --write src electron shared scripts docs .github package.json README.md"
+    "format": "prettier --write src electron shared scripts docs .github package.json README.md",
+    "package": "node scripts/package.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",

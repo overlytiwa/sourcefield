@@ -171,7 +171,7 @@ try {
   );
 } finally {
   cleanup();
-  service?.close();
+  await service?.close();
   dom.window.close();
   await fs.rm(temp, { recursive: true, force: true });
   await fs.rm(apiFile, { force: true });

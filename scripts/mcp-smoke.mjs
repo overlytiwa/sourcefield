@@ -209,6 +209,7 @@ try {
   );
   const exported = path.join(temp, "map with spaces.SOURCEFIELD");
   await api.writeMap(exported, map);
+  await workbench.close();
   await rename(project, path.join(temp, "moved"));
   current = new api.ProjectQuery(await api.readMap(exported), null);
   const offline = await call(second, "read_source", {
@@ -238,7 +239,7 @@ try {
 } finally {
   for (const client of clients) await client.close();
   await bridge?.close();
-  workbench?.close();
+  await workbench?.close();
   await rm(temp, { recursive: true, force: true });
   await rm(apiFile, { force: true });
 }

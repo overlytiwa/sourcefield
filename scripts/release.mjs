@@ -31,4 +31,4 @@ const run = (cmd, cmdArgs) => {
 };
 run("npm", ["run", "build"]);
 run("npm", ["run", "test:core"]);
-run("npx", ["electron-builder", ...args, "--publish", "always"]);
+run(process.execPath, ["scripts/package.mjs", ...args, "--publish", "always"]);

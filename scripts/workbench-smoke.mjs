@@ -5,11 +5,12 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import os from "node:os";
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 const apiFile = path.resolve("dist-electron/workbench-smoke-api.cjs");
 await build({
   stdin: {
     contents:
-      "export {scanProject} from './electron/analyzer/scan';export {compareMaps,impact,architecture,mapObservations} from './electron/workbench/graph';export {changeReport,coChanges} from './electron/workbench/git';export {Workbench} from './electron/workbench/service';export {encodeMap,decodeMap} from './electron/format';export {anchorFor,resolveAnchor} from './shared/workbench';",
+      "export {collectScan} from './electron/scan-task';export {scanProject} from './electron/analyzer/scan';export {compareMaps,impact,architecture,mapObservations} from './electron/workbench/graph';export {changeReport,coChanges} from './electron/workbench/git';export {Workbench} from './electron/workbench/service';export {encodeMap,decodeMap} from './electron/format';export {anchorFor,resolveAnchor} from './shared/workbench';",
     resolveDir: process.cwd(),
   },
   outfile: apiFile,
@@ -33,6 +34,24 @@ const git = (...args) =>
   });
 let service;
 try {
+  const fake = new EventEmitter();
+  fake.terminate = async () => 0;
+  let activate;
+  const activation = new Promise((resolve) => (activate = resolve));
+  const pending = api.collectScan(
+    fake,
+    () => true,
+    async () => activation,
+    () => {},
+  );
+  fake.emit("message", { type: "complete", value: { format: "fixture" } });
+  fake.emit("exit", 0);
+  activate();
+  assert.equal(
+    (await pending).ok,
+    true,
+    "Worker exit cannot cancel asynchronous map activation",
+  );
   await put(".gitignore", "ignored/*.js\n*.skip.js\n");
   await put("nested/.gitignore", "!keep.skip.js\n");
   await put("nested/keep.skip.js", "export const keep = 1;");
@@ -282,7 +301,7 @@ try {
   await assert.rejects(
     service.execute("save", { data: { investigations: "invalid" } }),
   );
-  service.close();
+  await service.close();
   service = await api.Workbench.open(
     after,
     temp,
@@ -297,7 +316,7 @@ try {
     "Workbench checks passed: Kotlin/Dart/Scala/Bash/Go/Rust calls, monorepo aliases, ignore precedence, message flows, Git changes and impact, stable IDs, incremental reuse, rules, stack/LCOV/OTLP imports, saved investigations, tours, activity and portable maps.",
   );
 } finally {
-  service?.close();
+  await service?.close();
   await fs.rm(temp, { recursive: true, force: true });
   await fs.rm(apiFile, { force: true });
 }

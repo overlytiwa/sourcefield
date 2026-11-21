@@ -77,11 +77,12 @@ export class Workbench {
     service.startWatch();
     return service;
   }
-  close() {
+  async close() {
     this.disposed = true;
     this.generation++;
-    this.watcher?.close();
     clearTimeout(this.timer);
+    await this.watcher?.close();
+    await this.saveQueue.catch(() => {});
   }
   replace(map: CodeMap) {
     this.map = map;
