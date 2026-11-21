@@ -60,6 +60,21 @@ app.on("browser-window-created", (_event, win) => {
       );
       app.emit("open-file", { preventDefault() {} }, saved);
       assert.equal(await opened, 50000);
+      await win.webContents
+        .executeJavaScript(`new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => { clearInterval(timer); reject(new Error('Large map was not activated')); }, 20000);
+        const timer = setInterval(() => {
+          if (document.querySelector('.graph-detail')?.textContent.includes('50,000')) {
+            clearTimeout(timeout); clearInterval(timer); resolve(true);
+          }
+        }, 100);
+      })`);
+      // Exercise the same view command delivered by MCP, including revealing a
+      // symbol outside Structure scope. The fixture does not need an AI client.
+      win.webContents.send("sourcefield:remote-view", {
+        id: "large-map-fixture",
+        command: { action: "select", node_id: "n25000" },
+      });
       const drawn = await win.webContents
         .executeJavaScript(`new Promise((resolve, reject) => {
         let requested = false;
@@ -68,7 +83,7 @@ app.on("browser-window-created", (_event, win) => {
           const scope = document.querySelector('select[aria-label="Map scope"]');
           if (scope && !requested) { scope.value = 'all'; scope.dispatchEvent(new Event('change', {bubbles:true})); requested = true; return; }
           const match = document.querySelector('.graph-detail')?.textContent.match(/Showing ([\\d,]+) of 50,000 nodes and ([\\d,]+) of 193,000 connections/);
-          if (match && Number(match[1].replaceAll(',', '')) > 0) {
+          if (match && Number(match[1].replaceAll(',', '')) > 0 && Number(match[2].replaceAll(',', '')) > 0) {
             clearTimeout(timeout); clearInterval(timer);
             resolve({nodes:Number(match[1].replaceAll(',', '')), edges:Number(match[2].replaceAll(',', '')), error:document.querySelector('.render-error')?.textContent});
           }

@@ -34,6 +34,24 @@ try {
     detail,
     "React and the renderer reuse the full index",
   );
+  const recursive = graphDetail({
+    ...map,
+    nodes: [nodes[0]],
+    edges: [
+      {
+        id: "recursive",
+        source: nodes[0].id,
+        target: nodes[0].id,
+        kind: "calls",
+        count: 1,
+      },
+    ],
+  });
+  assert.equal(
+    recursive.connections(nodes[0].id).length,
+    1,
+    "Recursive calls appear once in the inspector",
+  );
   const camera = new THREE.PerspectiveCamera(46, 1.5, 0.1, 10000);
   camera.position.set(0, 0, 500);
   camera.lookAt(0, 0, 0);

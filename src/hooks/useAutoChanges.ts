@@ -22,7 +22,8 @@ export function useAutoChanges(
     let cancelled = false,
       running = false,
       queued = false,
-      version = 0;
+      version = 0,
+      failed = false;
     let lastKey: string | undefined, failedRefreshKey: string | undefined;
     let timer: ReturnType<typeof setTimeout>;
     setChanges(null);
@@ -55,6 +56,7 @@ export function useAutoChanges(
         if (status.stale || changed) {
           // A fresh graph is needed before mapping changed declarations and impact.
           if (!(await refreshRef.current()) && !cancelled) {
+            failed = true;
             failedRefreshKey = status.key;
             setError(
               "Changes couldn’t be updated. Try refreshing the project again.",
@@ -64,7 +66,10 @@ export function useAutoChanges(
         }
         lastKey = status.key;
         const result = await window.sourcefield!.workbench("changes", { base });
-        if (!cancelled && started === version) setChanges(result);
+        if (!cancelled && started === version) {
+          failed = false;
+          setChanges(result);
+        }
       } catch (cause) {
         if (cancelled || started !== version) return;
         const code = (cause as { code?: string }).code;
@@ -78,6 +83,7 @@ export function useAutoChanges(
           lastKey = undefined;
           queued = true;
         } else {
+          failed = true;
           setChanges(null);
           setError(
             userMessage(
@@ -105,7 +111,13 @@ export function useAutoChanges(
       schedule();
     });
     const resume = () => {
-      if (document.visibilityState !== "hidden") schedule();
+      if (document.visibilityState !== "hidden") {
+        if (failed) {
+          failedRefreshKey = undefined;
+          lastKey = undefined;
+        }
+        schedule();
+      }
     };
     window.addEventListener("focus", resume);
     document.addEventListener("visibilitychange", resume);

@@ -43,6 +43,11 @@ export function userMessage(
     return "That file or folder is no longer available. Choose it again to continue.";
   if (value?.code === "ENOSPC")
     return "There isn’t enough free disk space. Free some space, then try again.";
+  if (value?.code === "EBUSY")
+    return "This file is being used by another application. Close it there and try again.";
+  if (value?.code === "EISDIR") return "Choose a file instead of a folder.";
+  if (value?.code === "ENAMETOOLONG")
+    return "This file path is too long. Move the project to a shorter path and try again.";
   if (/timed? out|ETIMEDOUT/i.test(details))
     return "This is taking longer than expected. Try again, or open a smaller project.";
   if (
@@ -64,6 +69,7 @@ export function userMessage(
   if (
     !message ||
     message.length > 400 ||
+    /^E[A-Z][A-Z0-9_]{1,}:/.test(message) ||
     /[\r\n]|Command failed:|\bfatal:|\b(?:ENOENT|EACCES|EPERM|TypeError|ReferenceError|SyntaxError)\b|Cannot (?:read|set) properties|is not a function|^spawn |^Error |\bat \S+\(/i.test(
       message,
     )

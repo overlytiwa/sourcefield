@@ -72,7 +72,7 @@ export class GraphDetail {
     const i = this.byId.get(id);
     return i === undefined
       ? []
-      : Array.from(this.incident(i), (edge) => this.map.edges[edge]);
+      : Array.from(new Set(this.incident(i)), (edge) => this.map.edges[edge]);
   }
   neighbors(id: string) {
     const i = this.byId.get(id),
@@ -207,6 +207,7 @@ export class GraphDetail {
     const offer = (i: number, priority = this.priority(i)) => {
       if (this.allowed && !this.allowed.has(i) && !pinned.has(i)) return;
       point.fromArray(this.map.nodes[i].position).project(camera);
+      if (!Number.isFinite(point.x + point.y + point.z)) return;
       if (
         point.z < -1 ||
         point.z > 1 ||
