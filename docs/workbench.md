@@ -14,7 +14,14 @@ another local Git revision, such as main, to compare the scanned working tree
 against that revision. This is a comparison with the working tree, not a
 three-dot merge-base comparison. Commit the desired base locally first.
 
-Refresh before comparing when source has changed. Results include changed and
+The Changes view checks automatically when opened or when the base revision
+changes. It refreshes the map after source edits and checks for new Git state
+every five seconds while visible, including commits and branch switches.
+Checks pause when the app is hidden; returning to it checks again. **Check now**
+is available for an immediate retry. A folder without Git history can still be
+explored; Changes explains when Git, a local folder, or a first commit is needed.
+
+Results include changed and
 removed declarations, incoming relationship paths, candidate tests and entry
 points, added/removed relationships, new import cycles and new violations of
 saved architecture rules. These are potential review targets, not predictions
@@ -73,8 +80,10 @@ IDs where available. It records at most 300 requests. It does not monitor other
 AI tools, claim an assistant understood a read, or attribute file edits to an AI.
 Select an investigation in Activity to compare observed edits with planned scope.
 
-A recursive source watcher marks changed paths. Auto refresh is opt-in in the
-status bar; manual Refresh is always available for a local project. Generated
+A recursive source watcher marks changed paths. Auto refresh is enabled by
+default and can be paused in the status bar; manual Refresh is always available
+for a local project. The Changes view keeps its comparison current even when
+general map auto refresh is paused. Generated
 folders, dependency roots and settings directories are filtered. Watcher failure
 is reported in Activity. On refresh, unchanged language-analysis groups are
 reused by content hash; a changed group is reanalyzed as a whole to keep its

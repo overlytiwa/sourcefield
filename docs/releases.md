@@ -32,6 +32,13 @@ the user to choose the default application if another application already owns
 a protected default association. The portable EXE does not run an installer or
 register a machine association.
 
+Windows Setup also installs a `sourcefield.cmd` terminal launcher and registers
+the application directory on PATH. A new terminal is required after installation
+or update. Uninstall removes only the matching application directory from PATH.
+The launcher opens the installed app directly, supports `sourcefield .` and saved
+maps, and runs `sourcefield mcp` with the bundled runtime. Portable builds do not
+register PATH; launch the portable executable directly.
+
 Packaged supported installations check GitHub for updates after 15 seconds and
 every four hours. Downloads run asynchronously in the main process. The
 updater validates update artifacts using its release metadata and installs a

@@ -38,6 +38,7 @@ import { GraphScene } from "./graph";
 import { Workbench } from "./components/Workbench";
 import { FlatGraph } from "./components/FlatGraph";
 import { McpSetup } from "./components/McpSetup";
+import { userMessage } from "../shared/errors";
 import type {
   RemoteViewCommand,
   RemoteViewResult,
@@ -81,7 +82,7 @@ export default function App() {
     [focusIds, setFocusIds] = useState<string[]>([]);
   const [dirty, setDirty] = useState<string[]>([]),
     [watching, setWatching] = useState(false),
-    [autoRefresh, setAutoRefresh] = useState(false);
+    [autoRefresh, setAutoRefresh] = useState(true);
   const [history, setHistory] = useState<string[]>([]),
     [historyAt, setHistoryAt] = useState(-1);
   const [map, setMap] = useState<CodeMap | null>(null);
@@ -126,6 +127,8 @@ export default function App() {
   const host = useRef<HTMLDivElement>(null),
     scene = useRef<GraphScene | null>(null),
     searchInput = useRef<HTMLInputElement>(null);
+  const refreshInFlight = useRef<Promise<boolean> | null>(null);
+  const lastAutoAttempt = useRef<string[] | null>(null);
   const actions = useRef({
     openFolder: () => {},
     openMap: () => {},
@@ -149,7 +152,7 @@ export default function App() {
         },
       };
     }
-    setDirty([]);
+    if (!preserve) setDirty([]);
     setMap(value);
     setSelected(value.view?.selected ?? null);
     setEdges(value.view?.visibleEdges ?? EDGE_KINDS);
@@ -230,10 +233,20 @@ export default function App() {
         if (command === "fit") scene.current?.fit();
       }),
     ];
-    window.sourcefield.ready().then((result) => {
-      if (result.ok && result.value) acceptMap(result.value);
-      else if (!result.ok && !result.cancelled) setMessage(result.error);
-    });
+    window.sourcefield
+      .ready()
+      .then((result) => {
+        if (result.ok && result.value) acceptMap(result.value);
+        else if (!result.ok && !result.cancelled) setMessage(result.error);
+      })
+      .catch((error) =>
+        setMessage(
+          userMessage(
+            error,
+            "The project couldn’t be opened. Try opening it again.",
+          ),
+        ),
+      );
     return () => cleanups.forEach((fn) => fn());
   }, [acceptMap]);
   useEffect(() => {
@@ -279,7 +292,9 @@ export default function App() {
       if (result.ok) acceptMap(result.value);
       else if (!result.cancelled) setMessage(result.error);
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Unable to open project.");
+      setMessage(
+        userMessage(e, "The project couldn’t be opened. Try opening it again."),
+      );
     } finally {
       setBusy(false);
       setProgress(null);
@@ -295,7 +310,12 @@ export default function App() {
       if (result.ok) setMessage(`Saved ${result.value.name}`);
       else if (!result.cancelled) setMessage(result.error);
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Unable to export map.");
+      setMessage(
+        userMessage(
+          e,
+          "The map couldn’t be saved. Try choosing another location.",
+        ),
+      );
     } finally {
       setExporting(false);
     }
@@ -307,35 +327,65 @@ export default function App() {
     setMessage("");
     try {
       const result = await window.sourcefield.setIncludeDependencies(include);
-      if (result.ok) acceptMap(result.value);
+      if (result.ok) acceptMap(result.value, true);
       else if (!result.cancelled) setMessage(result.error);
     } catch (error) {
       setMessage(
-        error instanceof Error ? error.message : "Unable to rescan project.",
+        userMessage(
+          error,
+          "The project couldn’t be updated. Try refreshing it again.",
+        ),
       );
     } finally {
       setBusy(false);
       setProgress(null);
     }
   }
-  async function refresh() {
-    if (busy) return;
-    setBusy(true);
-    setMessage("");
+  async function refresh(): Promise<boolean> {
+    if (refreshInFlight.current) return refreshInFlight.current;
+    if (busy || !window.sourcefield) return false;
+    const pending = (async () => {
+      setBusy(true);
+      setMessage("");
+      try {
+        const result = await window.sourcefield!.refresh();
+        if (result.ok) {
+          acceptMap(result.value, true);
+          return true;
+        }
+        if (!result.cancelled) setMessage(result.error);
+      } catch (e) {
+        setMessage(
+          userMessage(
+            e,
+            "The project couldn’t be updated. Try refreshing it again.",
+          ),
+        );
+      } finally {
+        setBusy(false);
+        setProgress(null);
+      }
+      return false;
+    })();
+    refreshInFlight.current = pending;
     try {
-      const result = await window.sourcefield!.refresh();
-      if (result.ok) acceptMap(result.value, true);
-      else if (!result.cancelled) setMessage(result.error);
-    } catch (e) {
-      setMessage(String(e));
+      return await pending;
     } finally {
-      setBusy(false);
-      setProgress(null);
+      refreshInFlight.current = null;
     }
   }
   useEffect(() => {
-    if (!autoRefresh || !dirty.length || busy) return;
-    const timer = setTimeout(() => void refresh(), 1200);
+    if (
+      !autoRefresh ||
+      !dirty.length ||
+      busy ||
+      lastAutoAttempt.current === dirty
+    )
+      return;
+    const timer = setTimeout(() => {
+      lastAutoAttempt.current = dirty;
+      void refresh();
+    }, 1200);
     return () => clearTimeout(timer);
   }, [autoRefresh, dirty, busy]);
   const visibleMap = useMemo(() => {
@@ -655,6 +705,7 @@ export default function App() {
               setLabels(view.labels);
             }}
             notify={setMessage}
+            onRefresh={refresh}
           />
         )}
         <div className="viewport">
@@ -1163,7 +1214,7 @@ export default function App() {
                         .sourcefield!.workbench("open-source", {
                           node_id: node.id,
                         })
-                        .catch((e) => setMessage(String(e)))
+                        .catch((e) => setMessage(userMessage(e)))
                     }
                   >
                     Open in VS Code at line {node.line ?? 1}

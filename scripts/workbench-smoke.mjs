@@ -10,7 +10,7 @@ const apiFile = path.resolve("dist-electron/workbench-smoke-api.cjs");
 await build({
   stdin: {
     contents:
-      "export {collectScan} from './electron/scan-task';export {scanProject} from './electron/analyzer/scan';export {compareMaps,impact,architecture,mapObservations} from './electron/workbench/graph';export {changeReport,coChanges} from './electron/workbench/git';export {Workbench} from './electron/workbench/service';export {encodeMap,decodeMap} from './electron/format';export {anchorFor,resolveAnchor} from './shared/workbench';",
+      "export {collectScan} from './electron/scan-task';export {scanProject} from './electron/analyzer/scan';export {compareMaps,impact,architecture,mapObservations} from './electron/workbench/graph';export {changeReport,coChanges,changeState,revision} from './electron/workbench/git';export {Workbench} from './electron/workbench/service';export {encodeMap,decodeMap} from './electron/format';export {anchorFor,resolveAnchor} from './shared/workbench';export {userMessage} from './shared/errors';",
     resolveDir: process.cwd(),
   },
   outfile: apiFile,
@@ -51,6 +51,44 @@ try {
     (await pending).ok,
     true,
     "Worker exit cannot cancel asynchronous map activation",
+  );
+  const rawGitFailure = new Error(
+    "Error invoking remote method 'sourcefield:workbench': Error: Command failed: git -c core.fsmonitor=false rev-parse --verify HEAD^{commit}\nfatal: not a git repository (or any of the parent directories): .git",
+  );
+  assert.equal(
+    api.userMessage(rawGitFailure),
+    "This folder isn’t a Git repository. Open a project with Git history to review changes.",
+  );
+  assert.match(
+    api.userMessage(
+      Object.assign(new Error("EACCES: open /private/project"), {
+        code: "EACCES",
+      }),
+    ),
+    /permission/,
+  );
+  assert.match(
+    api.userMessage(
+      Object.assign(new Error("ENOSPC: write"), { code: "ENOSPC" }),
+    ),
+    /disk space/,
+  );
+  assert.match(
+    api.userMessage(new Error("Unrecognized Sourcefield map header.")),
+    /exporting a new copy/,
+  );
+  assert.equal(
+    api.userMessage(
+      new Error("Command failed: something unexpected\ninternal details"),
+    ),
+    "Sourcefield couldn’t complete that action. Try again.",
+  );
+  await assert.rejects(
+    api.changeState(temp),
+    /This folder isn’t a Git repository/,
+  );
+  await assert.rejects(api.changeState(path.join(temp, "missing")), (error) =>
+    /no longer available/.test(api.userMessage(error)),
   );
   await put(".gitignore", "ignored/*.js\n*.skip.js\n");
   await put("nested/.gitignore", "!keep.skip.js\n");
@@ -101,10 +139,22 @@ try {
   for (const [file, text] of Object.entries(languages))
     await put("languages/" + file, text);
   git("init", "-q");
+  await assert.rejects(api.changeState(temp), /no commits yet/);
   git("config", "user.email", "fixture@example.test");
   git("config", "user.name", "Sourcefield fixture");
   git("add", ".");
   git("commit", "-qm", "initial");
+  await assert.rejects(
+    api.revision(temp, "not-a-real-branch"),
+    /revision “not-a-real-branch” wasn’t found/,
+  );
+  const originalPath = process.env.PATH;
+  try {
+    process.env.PATH = path.join(temp, "no-programs");
+    await assert.rejects(api.changeState(temp), /Git isn’t available/);
+  } finally {
+    process.env.PATH = originalPath;
+  }
   const before = await api.scanProject(temp, () => {});
   const byId = new Map(before.nodes.map((n) => [n.id, n]));
   assert(

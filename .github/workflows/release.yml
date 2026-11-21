@@ -91,4 +91,4 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         shell: bash
         run: |
-          gh release create "v$VERSION" release/* --target "$GITHUB_SHA" --title "Sourcefield $VERSION" --generate-notes --notes "Desktop workbench, Kotlin and additional language support, Git impact review, investigations, tours, execution imports and background updates."
+          gh release create "v$VERSION" release/* --target "$GITHUB_SHA" --title "Sourcefield $VERSION" --generate-notes

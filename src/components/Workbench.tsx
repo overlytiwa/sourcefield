@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { X, Plus, RefreshCw, ArrowUpRight, Trash2 } from "lucide-react";
 import type { CodeMap, MapNode, ViewState } from "../../shared/types";
+import { userMessage } from "../../shared/errors";
+import { useAutoChanges } from "../hooks/useAutoChanges";
 import {
   anchorFor,
   resolveAnchor,
   emptyWorkbench,
 } from "../../shared/workbench";
 import type {
-  ChangeReport,
   FeatureEntry,
   Investigation,
   Observation,
@@ -31,6 +32,7 @@ export function Workbench({
   capture,
   onRestore,
   notify,
+  onRefresh,
 }: {
   map: CodeMap;
   selected: string | null;
@@ -40,6 +42,7 @@ export function Workbench({
   capture: () => ViewState | undefined;
   onRestore: (view: ViewState) => void;
   notify: (message: string) => void;
+  onRefresh: () => Promise<boolean>;
 }) {
   const [tab, setTab] = useState<Tab>("Changes"),
     [state, setState] = useState<WorkbenchState>({
@@ -52,8 +55,13 @@ export function Workbench({
   const [error, setError] = useState(""),
     [working, setWorking] = useState(false),
     [base, setBase] = useState("HEAD"),
-    [changes, setChanges] = useState<ChangeReport | null>(null),
     [coupling, setCoupling] = useState<any>(null);
+  const {
+    changes,
+    error: changesError,
+    checking,
+    checkNow,
+  } = useAutoChanges(map, base, tab === "Changes", onRefresh);
   const [current, setCurrent] = useState(""),
     [title, setTitle] = useState(""),
     [architecture, setArchitecture] = useState<any>(null),
@@ -77,14 +85,15 @@ export function Workbench({
     try {
       setState(await call("state"));
     } catch (e) {
-      setError(String(e));
+      setError(userMessage(e));
     }
   }, [call]);
   useEffect(() => {
     void load();
-    setChanges(null);
+    setCoupling(null);
     setObservations(null);
   }, [map, load]);
+  useEffect(() => setCoupling(null), [changes]);
   useEffect(() => {
     if (tab !== "Activity") return;
     void load();
@@ -97,7 +106,7 @@ export function Workbench({
     try {
       await action();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(userMessage(e));
     } finally {
       setWorking(false);
     }
@@ -169,10 +178,13 @@ export function Workbench({
           </button>
         ))}
       </nav>
-      <div className="workbench-body" aria-busy={working}>
-        {error && (
+      <div
+        className="workbench-body"
+        aria-busy={working || (tab === "Changes" && checking)}
+      >
+        {(error || (tab === "Changes" && changesError)) && (
           <p className="work-error" role="alert">
-            {error}
+            {error || changesError}
           </p>
         )}
         {working && <p role="status">Working…</p>}
@@ -184,9 +196,14 @@ export function Workbench({
                 Compare the current scan with a Git revision. HEAD includes
                 staged, unstaged and untracked source changes.
               </p>
+              <p className="work-note">
+                Changes update automatically while this view is open.
+              </p>
+              {checking && <p role="status">Checking changes…</p>}
               <label>
                 Base revision
                 <input
+                  aria-label="Base revision"
                   value={base}
                   onChange={(e) => setBase(e.target.value)}
                   placeholder="HEAD or main"
@@ -194,14 +211,10 @@ export function Workbench({
               </label>
               <button
                 className="button primary"
-                disabled={working}
-                onClick={() =>
-                  run(async () => {
-                    setChanges(await call("changes", { base }));
-                  })
-                }
+                disabled={working || checking}
+                onClick={checkNow}
               >
-                Compare changes
+                Check now
               </button>
               {changes && (
                 <>

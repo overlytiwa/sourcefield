@@ -38,6 +38,14 @@ app.on("browser-window-created", (_event, win) => {
         "window.sourcefield.workbench('features',{})",
       );
       assert(Array.isArray(features.entries));
+      const errorMessage = await win.webContents.executeJavaScript(
+        "window.sourcefield.workbench('changes',{}).then(() => null, error => error.message)",
+      );
+      assert.match(errorMessage, /This folder isn’t a Git repository/);
+      assert.doesNotMatch(
+        errorMessage,
+        /Error invoking|Command failed|fsmonitor|fatal:/,
+      );
       console.log(
         "Native Electron passed: preload bridge, startup scan, asynchronous activation, refresh, watcher and workbench IPC.",
       );

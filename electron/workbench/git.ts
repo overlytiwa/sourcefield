@@ -3,24 +3,51 @@ import { promisify } from "node:util";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { createHash } from "node:crypto";
+import { UserError, userMessage } from "../../shared/errors";
 import type { ArchitectureRule } from "../../shared/workbench";
 import type { CodeMap, ScanOptions } from "../../shared/types";
 import { scanProject } from "../analyzer/scan";
 import { architecture, compareMaps } from "./graph";
 const exec = promisify(execFile);
 export async function git(root: string, args: string[]) {
-  const { stdout } = await exec(
-    "git",
-    ["-c", "core.fsmonitor=false", "-c", "core.pager=cat", ...args],
-    {
-      cwd: root,
-      encoding: "utf8",
-      maxBuffer: 32 * 1024 * 1024,
-      timeout: 60000,
-      windowsHide: true,
-    },
-  );
-  return stdout;
+  try {
+    const { stdout } = await exec(
+      "git",
+      ["-c", "core.fsmonitor=false", "-c", "core.pager=cat", ...args],
+      {
+        cwd: root,
+        encoding: "utf8",
+        maxBuffer: 32 * 1024 * 1024,
+        timeout: 60000,
+        windowsHide: true,
+        env: { ...process.env, LC_ALL: "C" },
+      },
+    );
+    return stdout;
+  } catch (error) {
+    const value = error as NodeJS.ErrnoException & {
+      stderr?: string;
+      killed?: boolean;
+    };
+    if (
+      value.code === "ENOENT" ||
+      value.code === "EACCES" ||
+      value.code === "EPERM" ||
+      value.killed ||
+      /not a git repository|dubious ownership|permission denied/i.test(
+        value.stderr ?? "",
+      )
+    )
+      throw new UserError(
+        userMessage(
+          error,
+          "Git couldn’t finish checking this project. Try again.",
+        ),
+        "GIT_UNAVAILABLE",
+      );
+    throw error;
+  }
 }
 export async function revision(root: string, ref: string) {
   if (
@@ -30,7 +57,44 @@ export async function revision(root: string, ref: string) {
     /[\x00-\x20]/.test(ref)
   )
     throw new Error("Provide a Git revision such as HEAD or main.");
-  return (await git(root, ["rev-parse", "--verify", `${ref}^{commit}`])).trim();
+  if (!(await fs.stat(root)).isDirectory())
+    throw new UserError(
+      "Choose a project folder to review Git changes.",
+      "GIT_REQUIRED",
+    );
+  if (
+    (await git(root, ["rev-parse", "--is-inside-work-tree"])).trim() !== "true"
+  )
+    throw new UserError(
+      "Open a project’s working folder to review Git changes.",
+      "GIT_REQUIRED",
+    );
+  try {
+    return (
+      await git(root, ["rev-parse", "--verify", `${ref}^{commit}`])
+    ).trim();
+  } catch (error) {
+    if (error instanceof UserError) throw error;
+    if (
+      !/Needed a single revision|unknown revision|bad revision|expected commit type|not a valid object/i.test(
+        String((error as { stderr?: string }).stderr),
+      )
+    )
+      throw error;
+    try {
+      await git(root, ["rev-parse", "--verify", "HEAD^{commit}"]);
+    } catch (headError) {
+      if (headError instanceof UserError) throw headError;
+      throw new UserError(
+        "This Git project has no commits yet. Make your first commit to start reviewing changes.",
+        "NO_COMMITS",
+      );
+    }
+    throw new UserError(
+      `The Git revision “${ref}” wasn’t found. Choose a branch or commit available in this project.`,
+      "REVISION_NOT_FOUND",
+    );
+  }
 }
 export async function changedFiles(root: string, ref = "HEAD") {
   const sha = await revision(root, ref);
@@ -57,6 +121,36 @@ export async function changedFiles(root: string, ref = "HEAD") {
     .filter(Boolean))
     files.push({ path: p, status: "?" });
   return { sha, files };
+}
+
+/** Cheap polling detects commits, staging and repeated edits without rebuilding a baseline. */
+export async function changeState(root: string, ref = "HEAD") {
+  const { sha, files } = await changedFiles(root, ref);
+  const head = ref === "HEAD" ? sha : await revision(root, "HEAD");
+  const stamps = [];
+  for (const file of files) {
+    try {
+      const stat = await fs.stat(path.join(root, file.path));
+      stamps.push([
+        file.path,
+        file.status,
+        stat.size,
+        stat.mtimeMs,
+        stat.ctimeMs,
+      ]);
+    } catch (error) {
+      if (
+        !["ENOENT", "ENOTDIR"].includes(
+          (error as NodeJS.ErrnoException).code ?? "",
+        )
+      )
+        throw error;
+      stamps.push([file.path, file.status, "missing"]);
+    }
+  }
+  return createHash("sha256")
+    .update(JSON.stringify([sha, head, stamps]))
+    .digest("hex");
 }
 export async function baselineMap(
   root: string,

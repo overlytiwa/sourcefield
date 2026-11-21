@@ -1,5 +1,6 @@
 import { parentPort, workerData } from "node:worker_threads";
 import { scanProject } from "./analyzer/scan";
+import { userMessage } from "../shared/errors";
 if (!parentPort) throw new Error("Analyzer must run as a worker.");
 scanProject(
   workerData.root,
@@ -11,6 +12,9 @@ scanProject(
   .catch((error) =>
     parentPort!.postMessage({
       type: "error",
-      error: error instanceof Error ? error.message : "Analysis failed.",
+      error: userMessage(
+        error,
+        "The project couldn’t be scanned. Try opening it again.",
+      ),
     }),
   );

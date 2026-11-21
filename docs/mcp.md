@@ -26,7 +26,7 @@ running. Click the plug icon at the bottom right to see connection settings with
 the correct path for your installation. Copy the configuration for your client.
 This does not change another application's configuration automatically.
 
-Node.js 22.12+ must be available to the client. On desktop systems where `node`
+The copied Node-based configuration requires Node.js 22.12+ on the client. On desktop systems where `node`
 is not on the GUI application's PATH, replace `node` with its absolute path.
 You can find that path with `where node` on Windows or `command -v node` on
 macOS/Linux.
@@ -94,6 +94,11 @@ After `npm run install-cli`, the same server can also be launched as:
 sourcefield mcp
 ```
 
+Windows Setup also installs `sourcefield` and adds it to PATH. Open a new terminal
+after installing or updating. This installed shortcut uses the app's bundled
+runtime for MCP and needs no separate Node installation. Portable Windows builds
+do not register the shortcut. Source builds still use `npm run install-cli`.
+
 For client configuration, using `node` plus the absolute built entry path is
 more reliable across Windows command shims and GUI PATH differences. Do not use
 `npm run mcp` as the client's command: npm prints banners to stdout, which is
@@ -113,6 +118,25 @@ When wrapping the unpacked Windows application with Inno, include the entire
 application directory, including `resources/mcp/` and the other Electron
 resources. The in-app connection dialog automatically shows the installed
 server's path; use that path in either client's configuration.
+
+## Model guidance
+
+The Sourcefield skill is embedded in the standalone MCP server and included in
+the connection's server instructions. Clients that expose these instructions to
+their model receive the workflows automatically, without a separate skill
+installation. Clients can also request the `sourcefield-guide` prompt or read
+`sourcefield://guides/skill` as Markdown.
+
+The guide covers finding a feature, reading scoped source, tracing real
+relationships, reviewing changes through comparison jobs, discovering saved
+investigations and tours, and explaining evidence on the map. It explains
+freshness, project IDs, incomplete analysis and the difference between potential
+impact and a confirmed failure. It does not grant permission to edit or publish.
+
+The portable skill file is at `resources/skills/sourcefield/SKILL.md` in the
+repository and under `resources/skills/sourcefield/` in packaged applications.
+Clients with their own skill system can install that folder separately if
+desired; support and installation locations depend on the client.
 
 ## Tools and useful results
 
@@ -168,9 +192,11 @@ ID fail clearly instead of silently targeting the new project. Multiple clients
 can connect simultaneously, but they share one visible project and view.
 
 The graph is a static analysis snapshot. Source files are not edited by these
-tools, and the server does not silently rescan them. If files change, code reads
-flag source newer than the graph; rescan in Sourcefield to refresh relationships
-and source locations.
+tools. The desktop app watches source and auto refreshes by default; the Changes
+view also keeps comparisons current while open. Code reads flag source newer
+than the graph. If refresh is paused, use Refresh in Sourcefield. Refresh can
+change the project ID, so fetch a new overview and current symbol IDs when the
+server reports that the project changed.
 
 A reopened map works without the original folder. Search, graph traversal and
 view control still work. Source reads use the saved declaration excerpt and
@@ -207,7 +233,7 @@ npm run smoke:mcp
 
 This short integration check exercises two independent MCP SDK clients against
 the stdio server, including the source CLI launcher and a standalone bundled
-copy. It checks all ten tools, real cross-file callers, source ranges,
+copy. It checks all 18 tools, embedded guidance, resources, prompts, cross-file callers, source ranges,
 pagination, view-command acknowledgement through a renderer stub, scope and
 authentication failures, offline map previews, stale project IDs, and Explorer
 argument parsing. It does not log in to or automate the Claude or ChatGPT apps.
