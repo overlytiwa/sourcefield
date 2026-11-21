@@ -1,10 +1,18 @@
 # Sourcefield
 
-Sourcefield is a desktop tool for exploring codebases as interactive 3D maps. It maps folders, files, and individual declarations, then connects them through containment, imports, exports, calls, inheritance, and references.
+Sourcefield is a desktop tool for exploring codebases as interactive 3D maps. It maps folders, files, and individual declarations, then connects them through containment, imports, exports, calls, inheritance, references, and explicit Electron message dispatch.
 
 Use it to understand an unfamiliar project, locate an implementation, follow dependencies, investigate the impact of a change, or share a browsable snapshot of a codebase. Its local MCP server lets compatible AI clients search the same graph, retrieve relevant source sections, and control the visualization.
 
 Analysis runs on your computer. Sourcefield does not execute your project to create a map.
+
+## Download and install
+
+Download the latest release from [GitHub Releases](https://github.com/overlytiwa/sourcefield/releases/latest). Choose the Windows Setup EXE for an installed application, the portable EXE for a standalone launch, the macOS DMG, or the Linux AppImage.
+
+The Windows installer displays the MIT license and registers `.sourcefield` maps with Sourcefield. Windows may still ask you to choose the default application when another app already owns the association. Portable Windows builds do not register the file type or install updates.
+
+Supported installed builds check for updates in the background, download available updates, and apply them on normal quit or restart. macOS automatic updates require a signed build; signing setup is tracked in [issue #1](https://github.com/overlytiwa/sourcefield/issues/1). See [builds, releases and updates](docs/releases.md) for platform requirements and release automation.
 
 ## Developer workbench
 
@@ -20,6 +28,8 @@ automated GitHub publication, background updates and signing requirements.
 
 ## Contents
 
+- [Download and install](#download-and-install)
+- [Developer workbench](#developer-workbench)
 - [Open a project](#open-a-project)
 - [Read the map](#read-the-map)
 - [Navigate and inspect code](#navigate-and-inspect-code)
@@ -117,6 +127,14 @@ Labels fade with distance and are checked for overlap. Sourcefield displays up t
 
 Point selection uses the visible screen position and a click target that scales with the rendered point. You can also select a visible label or use search when a region is dense.
 
+### Choose a view and scope
+
+The map starts in **Structure** scope with folders and files. Use **All symbols** to reveal declarations, or **Focused code** to inspect the code selected by a workbench action. Selecting a search result reveals its direct neighborhood.
+
+The network button switches between the 3D overview and a directed flat map. Flat-view arrows point from source to target, with relationship labels. The flat view shows up to 160 nodes and 500 relationships; narrow the selection to inspect larger areas in steps.
+
+Use **Back** and **Forward** to revisit selected symbols. The inspector's **Open in VS Code** action opens a local source file at its declaration line.
+
 ### Search for a symbol or file
 
 Use the toolbar search field to find a symbol by name or a file by its relative path. Search is case-insensitive.
@@ -176,6 +194,12 @@ The MCP tools can return callers, callees, and references directly, or follow th
 
 ### Review the impact of a change
 
+For a Git comparison, open **Workbench → Changes**. Compare against `HEAD` to include staged, unstaged, and untracked source, or enter another local Git revision to compare it with the scanned working tree. Refresh first when the map is stale.
+
+Results identify changed or removed declarations, potential consumers with relationship paths, candidate tests and entry points, added or removed relationships, and new architecture violations or import cycles. Git history can also suggest companion files that frequently changed together, with the supporting commit IDs.
+
+Impact results are review candidates, not predictions of failures. For a manual investigation:
+
 1. Find the symbol you intend to change.
 2. Inspect its incoming calls and references.
 3. Check related files and, where relevant, derived classes or interfaces.
@@ -204,7 +228,7 @@ The analysis report lists detected dependency folders that were excluded. Saved 
 
 ### Connection layers
 
-Toggle containment, imports, exports, calls, inheritance, or references to show the relationships relevant to your current investigation. Hiding a layer changes the visualization without removing those relationships from the map.
+Toggle containment, imports, exports, calls, inheritance, references, or Messages (explicit Electron IPC dispatch) to show the relationships relevant to your current investigation. Hiding a layer changes the visualization without removing those relationships from the map.
 
 The separate label control enables or disables progressive labels.
 
@@ -239,6 +263,8 @@ A map preserves:
 - Exact node coordinates and layout metadata.
 - Analysis diagnostics and project statistics.
 - Limited source previews.
+- Detected feature entry points and message relationships.
+- Saved investigations, notes, open questions, guided tours, and architecture boundary rules.
 - The camera position and target, selected node, visible relationship layers, and label setting.
 
 ### Reopen a snapshot
@@ -320,6 +346,8 @@ Sourcefield does not modify the client's configuration for you. Full configurati
 
 ### Available MCP tools
 
+The server exposes 18 tools. Workbench queries use the same graph and saved project data as the desktop interface.
+
 | Tool                             | Use                                                                                                                                                     |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sourcefield_project_overview`   | Get the active project ID, source mode, languages, counts, diagnostic totals, and important files.                                                      |
@@ -332,6 +360,16 @@ Sourcefield does not modify the client's configuration for you. Full configurati
 | `sourcefield_get_diagnostics`    | Inspect unsupported files, syntax issues, skipped files, limits, and unresolved or external targets.                                                    |
 | `sourcefield_get_view`           | Read the camera, selection, highlighted node IDs, and visible layers.                                                                                   |
 | `sourcefield_control_view`       | Focus, select, highlight, fit, zoom, clear selection, or change layers and labels in the desktop window.                                                |
+| `sourcefield_get_features` | Search and paginate detected UI actions, routes, commands, message handlers, and background tasks with source evidence. |
+| `sourcefield_get_impact` | Find potential incoming dependency impact, with relationship paths and candidate tests or entry points. |
+| `sourcefield_compare_changes` | Start a background Git comparison and return its job ID. |
+| `sourcefield_get_comparison` | Poll a comparison job for its status or completed change and impact report. |
+| `sourcefield_get_investigation` | Retrieve saved task notes, questions, selected symbol previews, freshness, and bounded context. |
+| `sourcefield_get_tour` | Read a paginated guided tour with explanations, source locations, and freshness indicators. |
+| `sourcefield_get_activity` | List saved investigations and tours, observed MCP activity, and source edits. |
+| `sourcefield_get_architecture` | Inspect import cycles and violations of user-defined architecture rules. |
+
+Git comparisons run asynchronously: call `sourcefield_compare_changes`, then poll `sourcefield_get_comparison` with the returned `job_id`. Reuse `project_id` to detect a project switch. Activity only records requests made through Sourcefield; a read does not establish understanding or authorship of an edit.
 
 ### A useful request sequence
 
@@ -398,7 +436,7 @@ The MCP tools can read scoped project data and change the view. They do not edit
 | Language   | Common extensions                            | Analysis approach                                                                                                                                       |
 | ---------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs`                | TypeScript compiler API with JavaScript analysis.                                                                                                       |
-| TypeScript | `.ts`, `.tsx`, `.mts`, `.cts`                | TypeScript compiler API, including root `tsconfig.json`/`jsconfig.json` path-alias handling where applicable.                                           |
+| TypeScript | `.ts`, `.tsx`, `.mts`, `.cts`                | TypeScript compiler API, including root and per-package `tsconfig.json`/`jsconfig.json` path-alias handling where applicable.                                           |
 | Python     | `.py`, `.pyi`                                | Python standard-library AST with lexical declarations and local import resolution.                                                                      |
 | Kotlin     | `.kt`, `.kts`                                | Tree-sitter declarations, lexical calls and conservative package resolution.                                                                            |
 | Dart       | `.dart`                                      | Tree-sitter declarations and local calls.                                                                                                               |
@@ -449,7 +487,7 @@ The scanner applies nested `.gitignore` rules and skips symlinks. It detects com
 | Apple platforms         | `Pods` with a Podfile or installation marker; `Carthage` next to a Cartfile                                                                                               |
 | Other ecosystems        | `.pub-cache`, Lua's `lua_modules`, OCaml's `_opam`, Elixir's `deps` next to `mix.exs`                                                                                     |
 
-Folder detection works independently of symbol-analysis support: a recognized Dart dependency directory can be excluded even though Dart symbols are not currently analyzed. Ordinary `lib`, `libs` and monorepo `packages` directories are kept unless another ignore rule applies. `.NET` `bin` and `obj` are treated as generated output only beside a project file.
+Folder detection works independently of symbol-analysis support: a recognized Lua dependency directory can be excluded even though Lua symbols are not currently analyzed. Ordinary `lib`, `libs` and monorepo `packages` directories are kept unless another ignore rule applies. `.NET` `bin` and `obj` are treated as generated output only beside a project file.
 
 Explicit dependency opt-in overrides inherited `.gitignore` rules at a recognized dependency root. That root's own ignore files still apply. Other ignored source folders remain excluded. Build output, caches and metadata such as `dist`, `build`, `target`, `.next`, `coverage`, `__pycache__`, `.git` and `.sourcefield` stay excluded in both modes.
 
@@ -465,6 +503,8 @@ The ignored count measures skipped directory entries, not the number of files re
 | Per-file content analysis          | 2 MiB                                                           |
 | Symbol extraction budget           | 100,000 per analyzer                                            |
 | Saved declaration preview          | Up to 12 lines and 2,400 characters                             |
+| Directed flat view | Up to 160 nodes and 500 relationships |
+| Debug import file size | 8 MiB |
 | Visible graph labels               | Up to 90 at once                                                |
 | Map file size and expanded JSON    | 256 MiB each                                                    |
 | Default MCP result page            | 15 results; paginated tools allow up to 60                      |
@@ -484,7 +524,7 @@ The MCP server uses stdio between the AI client and server process, plus a crede
 
 An AI provider can still receive the source sections and tool results its client sends to the model. A local MCP connection does not make a cloud-hosted model run offline.
 
-Sourcefield stores window state and rendering preferences locally. Exported maps store the graph, view state, diagnostics, and source excerpts described above.
+Sourcefield stores window state, rendering preferences, project investigations, tours, architecture rules, and bounded activity records locally. Exported maps include saved workbench data, graph and feature metadata, view state, diagnostics, and source excerpts. Debug imports remain transient. Update checks contact GitHub for release metadata and downloads; they do not upload project source.
 
 ## Keyboard shortcuts
 
@@ -530,6 +570,8 @@ Client-specific MCP troubleshooting is in [Local MCP integration](docs/mcp.md).
 
 | Document                                     | Covers                                                                                              |
 | -------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| [Developer workbench](docs/workbench.md) | Changes, features, investigations, activity, architecture, execution imports, tours, and analysis limits. |
+| [Builds, releases and updates](docs/releases.md) | Native installers, release commands, GitHub Actions, automatic updates, and signing requirements. |
 | [Local MCP integration](docs/mcp.md)         | Claude and ChatGPT/Codex configuration, tool behavior, installed-app paths, and integration checks. |
 | [Map format](docs/format.md)                 | Binary header, compression, versioned schema, nodes, edges, view state, and validation.             |
 | [File association](docs/file-association.md) | Explorer arguments, existing-instance behavior, and Inno open-command integration.                  |
