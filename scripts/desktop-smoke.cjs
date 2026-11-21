@@ -38,8 +38,64 @@ app.on("browser-window-created", (_event, win) => {
         "window.sourcefield.workbench('features',{})",
       );
       assert(Array.isArray(features.entries));
+      const errorMessage = await win.webContents.executeJavaScript(
+        "window.sourcefield.workbench('changes',{}).then(() => null, error => error.message)",
+      );
+      assert.match(errorMessage, /This folder isn’t a Git repository/);
+      assert.doesNotMatch(
+        errorMessage,
+        /Error invoking|Command failed|fsmonitor|fatal:/,
+      );
+      const large = require("./detail-fixture.cjs")();
+      const saved = path.join(temp, "large.sourcefield");
+      fs.writeFileSync(
+        saved,
+        Buffer.concat([
+          Buffer.from("SOURCEFIELD\x00\x01\n", "binary"),
+          require("node:zlib").gzipSync(Buffer.from(JSON.stringify(large))),
+        ]),
+      );
+      const opened = win.webContents.executeJavaScript(
+        "new Promise(resolve => { const stop = window.sourcefield.onMap(map => { stop(); resolve(map.nodes.length); }); })",
+      );
+      app.emit("open-file", { preventDefault() {} }, saved);
+      assert.equal(await opened, 50000);
+      await win.webContents
+        .executeJavaScript(`new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => { clearInterval(timer); reject(new Error('Large map was not activated')); }, 20000);
+        const timer = setInterval(() => {
+          if (document.querySelector('.graph-detail')?.textContent.includes('50,000')) {
+            clearTimeout(timeout); clearInterval(timer); resolve(true);
+          }
+        }, 100);
+      })`);
+      // Exercise the same view command delivered by MCP, including revealing a
+      // symbol outside Structure scope. The fixture does not need an AI client.
+      win.webContents.send("sourcefield:remote-view", {
+        id: "large-map-fixture",
+        command: { action: "select", node_id: "n25000" },
+      });
+      const drawn = await win.webContents
+        .executeJavaScript(`new Promise((resolve, reject) => {
+        let requested = false;
+        const timeout = setTimeout(() => { clearInterval(timer); reject(new Error('Large map did not render')); }, 25000);
+        const timer = setInterval(() => {
+          const scope = document.querySelector('select[aria-label="Map scope"]');
+          if (scope && !requested) { scope.value = 'all'; scope.dispatchEvent(new Event('change', {bubbles:true})); requested = true; return; }
+          const match = document.querySelector('.graph-detail')?.textContent.match(/Showing ([\\d,]+) of 50,000 nodes and ([\\d,]+) of 193,000 connections/);
+          if (match && Number(match[1].replaceAll(',', '')) > 0 && Number(match[2].replaceAll(',', '')) > 0) {
+            clearTimeout(timeout); clearInterval(timer);
+            resolve({nodes:Number(match[1].replaceAll(',', '')), edges:Number(match[2].replaceAll(',', '')), error:document.querySelector('.render-error')?.textContent});
+          }
+        }, 150);
+      })`);
+      assert(!drawn.error, drawn.error);
+      assert(
+        drawn.nodes <= 6000 && drawn.edges <= 8000,
+        "Native large-map rendering stays within its draw budget",
+      );
       console.log(
-        "Native Electron passed: preload bridge, startup scan, asynchronous activation, refresh, watcher and workbench IPC.",
+        `Native Electron passed: lifecycle, refresh, friendly IPC errors and a 50,000-node / 193,000-connection map drawn as ${drawn.nodes} nodes / ${drawn.edges} connections.`,
       );
       clearTimeout(timeout);
       app.quit();

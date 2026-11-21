@@ -58,7 +58,7 @@ Use **Cancel scan** to stop an analysis. A new map replaces the current map when
 
 ### Refresh after code changes
 
-A map is a static analysis snapshot. Sourcefield watches local source changes and marks the map stale. Use Refresh or enable Auto refresh in the status bar to update the graph.
+A map is a static analysis snapshot. Sourcefield watches local source changes and updates the graph automatically after edits settle. You can pause Auto refresh in the status bar or use Refresh at any time.
 
 Use **Refresh** to analyze current source while preserving the view. Unchanged language groups reuse cached analysis. An exported map always retains the snapshot that was saved into it.
 
@@ -129,6 +129,12 @@ Point selection uses the visible screen position and a click target that scales 
 
 ### Choose a view and scope
 
+Large maps use progressive detail: the 3D view draws a spatially selected subset
+of visible code, then reveals more detail as you zoom in. Selecting code gives
+its immediate connections priority. The view shows how many nodes and
+connections are currently drawn. Search, the inspector, MCP and exported maps
+still use the complete analysis. Switching to the flat view pauses 3D drawing.
+
 The map starts in **Structure** scope with folders and files. Use **All symbols** to reveal declarations, or **Focused code** to inspect the code selected by a workbench action. Selecting a search result reveals its direct neighborhood.
 
 The network button switches between the 3D overview and a directed flat map. Flat-view arrows point from source to target, with relationship labels. The flat view shows up to 160 nodes and 500 relationships; narrow the selection to inspect larger areas in steps.
@@ -164,7 +170,7 @@ Selecting a node highlights its direct connections and opens the inspector. Avai
 
 Clicking a connection moves to its neighboring node. This lets you follow a call chain or dependency through the project without repeatedly searching from scratch.
 
-Source previews in the inspector are snapshots, not an editor or a live view of the file. Use the displayed location in your editor when changing code, and rescan after changes to refresh the map.
+Source previews in the inspector are snapshots, not an editor or a live view of the file. Use the displayed location in your editor when changing code. Auto refresh updates the map and previews after edits settle; use Refresh if you have paused it.
 
 ## Developer workflows
 
@@ -194,7 +200,7 @@ The MCP tools can return callers, callees, and references directly, or follow th
 
 ### Review the impact of a change
 
-For a Git comparison, open **Workbench → Changes**. Compare against `HEAD` to include staged, unstaged, and untracked source, or enter another local Git revision to compare it with the scanned working tree. Refresh first when the map is stale.
+For a Git comparison, open **Workbench → Changes**. Changes are checked automatically against `HEAD`, including staged, unstaged, and untracked source. Enter another local Git revision to change the comparison base. The view updates after source edits and checks Git state every five seconds while visible, so commits and branch switches are picked up too. Saved maps and folders without Git history show a plain-language explanation of what is needed.
 
 Results identify changed or removed declarations, potential consumers with relationship paths, candidate tests and entry points, added or removed relationships, and new architecture violations or import cycles. Git history can also suggest companion files that frequently changed together, with the supporting commit IDs.
 
@@ -303,6 +309,12 @@ When the `sourcefield` command is available on PATH, open the current directory 
 sourcefield .
 ```
 
+The Windows Setup installer registers this command automatically. After installing
+or updating, open a new terminal before running it. The installed command launches
+Sourcefield directly; it does not require Node.js or a source checkout. Portable
+builds do not change PATH. For a source build on any platform, run
+`npm run build` followed by `npm run install-cli` first.
+
 Other supported forms are:
 
 ```sh
@@ -322,11 +334,16 @@ sourcefield --version
 | `sourcefield <map.sourcefield>` | Opens a saved snapshot.                                        |
 | `sourcefield mcp`               | Runs the local MCP stdio server through the Node CLI launcher. |
 
-Quote paths containing spaces. The desktop executable also accepts directory arguments and the explicit `--map <path>` option. Availability of the command on PATH depends on how Sourcefield was distributed or registered on the machine.
+Quote paths containing spaces. The desktop executable also accepts directory arguments and the explicit `--map <path>` option. Windows removes its terminal registration on uninstall and preserves other PATH entries.
 
 The MCP entry waits for protocol requests; it is not an interactive terminal prompt.
 
 ## Use Sourcefield with AI
+
+Sourcefield includes an AI skill for finding implementations, tracing relationships
+and reviewing changes. MCP clients receive the guidance when connecting. It is
+also available as the `sourcefield-guide` prompt and the
+`sourcefield://guides/skill` resource. See [MCP guidance](docs/mcp.md#model-guidance).
 
 Sourcefield includes an MCP server for compatible desktop AI clients, including Claude Desktop and ChatGPT desktop/Codex clients with local MCP support. The same server implementation provides the same tools to either client; their configuration formats differ.
 

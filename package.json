@@ -1,7 +1,7 @@
 {
   "name": "sourcefield",
   "productName": "Sourcefield",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "Understand features, review changes and investigate local codebases.",
   "private": true,
   "main": "dist-electron/main.cjs",
@@ -22,7 +22,9 @@
     "smoke:render": "node scripts/render-smoke.mjs",
     "release": "node scripts/release.mjs",
     "smoke:workbench": "node scripts/workbench-smoke.mjs",
-    "test:core": "npm run smoke && npm run smoke:dependencies && npm run smoke:render && npm run smoke:mcp && npm run smoke:workbench && npm run smoke:ui",
+    "test:core": "npm run smoke && npm run smoke:dependencies && npm run smoke:render && npm run smoke:detail && npm run smoke:mcp && npm run smoke:workbench && npm run smoke:ui && npm run smoke:cli",
+    "smoke:detail": "node scripts/detail-smoke.mjs",
+    "smoke:cli": "node scripts/cli-smoke.mjs",
     "smoke:ui": "node scripts/ui-smoke.mjs",
     "format": "prettier --write src electron shared scripts docs .github package.json README.md",
     "package": "node scripts/package.mjs",
@@ -86,14 +88,29 @@
         "portable"
       ],
       "icon": "resources/icons/icon.ico",
-      "artifactName": "Sourcefield-Setup-${version}-${arch}.${ext}"
+      "artifactName": "Sourcefield-Setup-${version}-${arch}.${ext}",
+      "extraFiles": [
+        {
+          "from": "resources/cli/sourcefield.cmd",
+          "to": "sourcefield.cmd"
+        },
+        {
+          "from": "resources/cli/update-path.ps1",
+          "to": "sourcefield-path.ps1"
+        },
+        {
+          "from": "dist-electron/version.txt",
+          "to": "sourcefield-version.txt"
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "installerIcon": "resources/icons/icon.ico",
       "uninstallerIcon": "resources/icons/icon.ico",
-      "license": "resources/license.txt"
+      "license": "resources/license.txt",
+      "include": "resources/installer.nsh"
     },
     "mac": {
       "target": [
@@ -116,6 +133,10 @@
       "dist-electron/python_analyzer.py"
     ],
     "extraResources": [
+      {
+        "from": "resources/skills",
+        "to": "skills"
+      },
       {
         "from": "resources/icons",
         "to": "icons",

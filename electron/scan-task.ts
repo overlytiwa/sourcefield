@@ -1,5 +1,6 @@
 import type { Worker } from "node:worker_threads";
 import type { ActionResult, CodeMap, ScanProgress } from "../shared/types";
+import { userMessage } from "../shared/errors";
 /** A worker can exit immediately after posting complete. Finalizing project
  * state is asynchronous, so exit must not cancel an acknowledged result. */
 export function collectScan(
@@ -25,7 +26,8 @@ export function collectScan(
     worker.on("message", async (message) => {
       if (settled) return;
       if (message.type === "progress" && isCurrent()) progress(message.value);
-      if (message.type === "error") finish({ ok: false, error: message.error });
+      if (message.type === "error")
+        finish({ ok: false, error: userMessage(message.error) });
       if (message.type === "complete" && !completing) {
         completing = true;
         if (!isCurrent()) {
@@ -37,14 +39,14 @@ export function collectScan(
           finish(isCurrent() ? { ok: true, value: message.value } : cancel());
         } catch (error) {
           finish(
-            isCurrent()
-              ? { ok: false, error: (error as Error).message }
-              : cancel(),
+            isCurrent() ? { ok: false, error: userMessage(error) } : cancel(),
           );
         }
       }
     });
-    worker.on("error", (error) => finish({ ok: false, error: error.message }));
+    worker.on("error", (error) =>
+      finish({ ok: false, error: userMessage(error) }),
+    );
     worker.on("exit", (code) => {
       if (!settled && !completing)
         finish(

@@ -89,6 +89,32 @@ try {
   const second = await connect("sourcefield-smoke-client-two", [standalone]);
   const tools = await first.listTools();
   assert.equal(tools.tools.length, 18);
+  const skill = await readFile(
+    path.join(root, "resources/skills/sourcefield/SKILL.md"),
+    "utf8",
+  );
+  for (const client of [first, second]) {
+    assert(
+      client.getInstructions().includes(skill),
+      "Connected clients receive the embedded skill",
+    );
+    const resources = await client.listResources();
+    assert(
+      resources.resources.some((r) => r.uri === "sourcefield://guides/skill"),
+    );
+    const resource = await client.readResource({
+      uri: "sourcefield://guides/skill",
+    });
+    assert.equal(
+      resource.contents[0].text,
+      skill,
+      "The skill is available even from a standalone server bundle",
+    );
+    const prompts = await client.listPrompts();
+    assert(prompts.prompts.some((p) => p.name === "sourcefield-guide"));
+    const prompt = await client.getPrompt({ name: "sourcefield-guide" });
+    assert.equal(prompt.messages[0].content.text, skill);
+  }
   async function call(client, name, args = {}) {
     const reply = await client.callTool({
       name: "sourcefield_" + name,

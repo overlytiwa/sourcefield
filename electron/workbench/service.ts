@@ -3,6 +3,7 @@ import { watch, type FSWatcher } from "chokidar";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import type { CodeMap } from "../../shared/types";
+import { UserError, userMessage } from "../../shared/errors";
 import {
   portableSchema,
   emptyWorkbench,
@@ -14,7 +15,7 @@ import type {
   WorkbenchState,
 } from "../../shared/workbench";
 import { architecture, impact, mapObservations } from "./graph";
-import { coChanges, changedFiles } from "./git";
+import { coChanges, changedFiles, changeState } from "./git";
 import { background } from "../tasks";
 import { excludedFolders } from "../analyzer/folder-policy";
 
@@ -23,6 +24,7 @@ export class Workbench {
   activity: Activity[] = [];
   edits = new Set<string>();
   observedEdits = new Set<string>();
+  editVersion = 0;
   private watcher?: FSWatcher;
   private timer?: ReturnType<typeof setTimeout>;
   private generation = 0;
@@ -84,11 +86,12 @@ export class Workbench {
     await this.watcher?.close();
     await this.saveQueue.catch(() => {});
   }
-  replace(map: CodeMap) {
+  replace(map: CodeMap, scannedVersion = this.editVersion) {
     this.map = map;
-    this.edits.clear();
+    // Edits arriving during a scan need another pass, even if an earlier scan finished.
+    if (scannedVersion === this.editVersion) this.edits.clear();
     this.generation++;
-    this.notify({ paths: [], watching: !!this.watcher });
+    this.notify({ paths: [...this.edits], watching: !!this.watcher });
   }
   startWatch() {
     if (!this.root || this.watcher) return;
@@ -124,6 +127,7 @@ export class Workbench {
       });
       this.watcher.on("all", (_event, file) => {
         if (this.disposed) return;
+        this.editVersion++;
         const relative = path
           .relative(this.root!, file)
           .split(path.sep)
@@ -222,7 +226,7 @@ export class Workbench {
           (error) =>
             this.comparisons.set(id, {
               status: "failed",
-              error: error.message,
+              error: userMessage(error),
             }),
         );
         return {
@@ -266,11 +270,29 @@ export class Workbench {
                 .slice(0, 200)
             : [args.node_id],
         );
+      case "changes-status": {
+        if (!this.root)
+          throw new UserError(
+            "This is a saved map. Open the project folder to review its current Git changes.",
+            "LOCAL_PROJECT_REQUIRED",
+          );
+        const key = await changeState(
+          this.root,
+          typeof args.base === "string" ? args.base : "HEAD",
+        );
+        return { key, stale: !!this.edits.size };
+      }
       case "changes": {
         if (!this.root)
-          throw new Error("Open the project folder to compare Git revisions.");
+          throw new UserError(
+            "This is a saved map. Open the project folder to review its current Git changes.",
+            "LOCAL_PROJECT_REQUIRED",
+          );
         if (this.edits.size)
-          throw new Error("Refresh the map before comparing changes.");
+          throw new UserError(
+            "Source files have changed. Updating the map before checking changes.",
+            "SOURCE_CHANGED",
+          );
         const result = await background({
           task: "changes",
           map: this.map,
@@ -279,8 +301,9 @@ export class Workbench {
           ref: typeof args.base === "string" ? args.base : "HEAD",
         });
         if (generation !== this.generation || this.edits.size || this.disposed)
-          throw new Error(
-            "Source changed during comparison. Refresh and compare again.",
+          throw new UserError(
+            "Source files changed during the comparison. Checking again once they settle.",
+            "SOURCE_CHANGED",
           );
         return result;
       }

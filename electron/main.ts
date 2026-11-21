@@ -27,6 +27,7 @@ import { startUpdates } from "./updates";
 import { Workbench } from "./workbench/service";
 import { background } from "./tasks";
 import { rememberWindowState, restoreWindowState } from "./window-state";
+import { UserError, userMessage } from "../shared/errors";
 
 let window: BrowserWindow | null = null,
   activeMap: CodeMap | null = null,
@@ -82,6 +83,7 @@ async function activateMap(
   map: CodeMap,
   root: string | null,
   generation = openGeneration,
+  scannedVersion?: number,
 ) {
   const previous = workbench;
   const next =
@@ -94,7 +96,7 @@ async function activateMap(
     if (next !== previous) await next.close();
     throw new SupersededOpen("A newer project was opened.");
   }
-  if (next === previous) next.replace(map);
+  if (next === previous) next.replace(map, scannedVersion);
   else {
     workbench = next;
     void previous?.close();
@@ -106,7 +108,8 @@ async function activateMap(
 let startupTask: Promise<ActionResult<CodeMap | null>> | null = null;
 const failure = (error: unknown): ActionResult<never> => ({
   ok: false,
-  error: error instanceof Error ? error.message : "Something went wrong.",
+  error: userMessage(error),
+  ...(error instanceof UserError ? { errorCode: error.code } : {}),
   ...(error instanceof SupersededOpen ? { cancelled: true } : {}),
 });
 const cancel = (): ActionResult<never> => ({
@@ -265,6 +268,8 @@ function createWindow() {
 }
 function runScan(root: string, options: ScanOptions = scanOptions) {
   const generation = ++openGeneration;
+  const scannedVersion =
+    workbench?.root === path.resolve(root) ? workbench.editVersion : undefined;
   const worker = new Worker(path.join(__dirname, "worker.cjs"), {
     workerData: {
       root,
@@ -276,7 +281,7 @@ function runScan(root: string, options: ScanOptions = scanOptions) {
   return collectScan(
     worker,
     () => generation === openGeneration,
-    (map) => activateMap(map, path.resolve(root), generation),
+    (map) => activateMap(map, path.resolve(root), generation, scannedVersion),
     (value) => window?.webContents.send("sourcefield:progress", value),
   ).finally(() => {
     if (scanWorker === worker) scanWorker = null;
@@ -517,7 +522,7 @@ async function openExternalTarget(target: { file?: string; project?: string }) {
     }
   } catch (e) {
     if (!(e instanceof SupersededOpen))
-      dialog.showErrorBox("Unable to open project", (e as Error).message);
+      dialog.showErrorBox("Unable to open project", userMessage(e));
   }
 }
 ipcMain.handle("sourcefield:refresh", async (event) => {
@@ -531,58 +536,68 @@ ipcMain.handle(
   "sourcefield:workbench",
   async (event, action: unknown, args: unknown) => {
     trusted(event);
-    if (
-      typeof action !== "string" ||
-      !args ||
-      typeof args !== "object" ||
-      Array.isArray(args) ||
-      !workbench
-    )
-      throw new Error("Open a project or saved map first.");
-    const service = workbench,
-      input = args as Record<string, any>;
-    if (scanWorker) throw new Error("Wait for the scan to finish.");
-    let result: unknown;
-    if (action === "import-observations") {
-      if (!window) throw new Error("Window unavailable.");
-      const selected = await dialog.showOpenDialog(window, {
-        title: "Import stack trace, LCOV coverage or OTLP JSON",
-        properties: ["openFile"],
-      });
-      if (selected.canceled) return null;
-      const file = selected.filePaths[0];
-      if ((await fs.stat(file)).size > 8 * 1024 * 1024)
-        throw new Error("Import exceeds 8 MiB.");
-      result = await service.execute("observations", {
-        format: input.format,
-        text: await fs.readFile(file, "utf8"),
-      });
-    } else if (action === "open-source") {
-      if (!activeRoot || typeof input.node_id !== "string")
-        throw new Error("Open a local project first.");
-      const node = activeMap?.nodes.find((n) => n.id === input.node_id);
-      if (!node || node.kind === "folder")
-        throw new Error("Choose a source symbol or file.");
-      const root = await fs.realpath(activeRoot),
-        actual = await fs.realpath(path.join(root, node.path));
-      const relative = path.relative(root, actual);
+    try {
       if (
-        !relative ||
-        relative === ".." ||
-        relative.startsWith(".." + path.sep) ||
-        path.isAbsolute(relative)
+        typeof action !== "string" ||
+        !args ||
+        typeof args !== "object" ||
+        Array.isArray(args) ||
+        !workbench
       )
-        throw new Error("Source leaves the selected project.");
-      await shell.openExternal(
-        "vscode://file/" +
-          actual.split(path.sep).map(encodeURIComponent).join("/") +
-          ":" +
-          (node.line ?? 1),
-      );
-      result = { opened: true };
-    } else result = await service.execute(action, input);
-    if (service !== workbench) throw new Error("The active project changed.");
-    return result;
+        throw new Error("Open a project or saved map first.");
+      const service = workbench,
+        input = args as Record<string, any>;
+      if (scanWorker)
+        throw new UserError(
+          "The project is updating. Changes will be checked when it finishes.",
+          "SCAN_BUSY",
+        );
+      let result: unknown;
+      if (action === "import-observations") {
+        if (!window) throw new Error("Window unavailable.");
+        const selected = await dialog.showOpenDialog(window, {
+          title: "Import stack trace, LCOV coverage or OTLP JSON",
+          properties: ["openFile"],
+        });
+        if (selected.canceled) return { ok: true, value: null };
+        const file = selected.filePaths[0];
+        if ((await fs.stat(file)).size > 8 * 1024 * 1024)
+          throw new Error("Import exceeds 8 MiB.");
+        result = await service.execute("observations", {
+          format: input.format,
+          text: await fs.readFile(file, "utf8"),
+        });
+      } else if (action === "open-source") {
+        if (!activeRoot || typeof input.node_id !== "string")
+          throw new Error("Open a local project first.");
+        const node = activeMap?.nodes.find((n) => n.id === input.node_id);
+        if (!node || node.kind === "folder")
+          throw new Error("Choose a source symbol or file.");
+        const root = await fs.realpath(activeRoot),
+          actual = await fs.realpath(path.join(root, node.path));
+        const relative = path.relative(root, actual);
+        if (
+          !relative ||
+          relative === ".." ||
+          relative.startsWith(".." + path.sep) ||
+          path.isAbsolute(relative)
+        )
+          throw new Error("Source leaves the selected project.");
+        await shell.openExternal(
+          "vscode://file/" +
+            actual.split(path.sep).map(encodeURIComponent).join("/") +
+            ":" +
+            (node.line ?? 1),
+        );
+        result = { opened: true };
+      } else result = await service.execute(action, input);
+      if (service !== workbench) throw new Error("The active project changed.");
+      return { ok: true, value: result };
+    } catch (error) {
+      if (!(error instanceof UserError))
+        console.error("Workbench action failed:", error);
+      return failure(error);
+    }
   },
 );
 app.on("open-file", (event, file) => {

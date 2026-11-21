@@ -14,7 +14,14 @@ another local Git revision, such as main, to compare the scanned working tree
 against that revision. This is a comparison with the working tree, not a
 three-dot merge-base comparison. Commit the desired base locally first.
 
-Refresh before comparing when source has changed. Results include changed and
+The Changes view checks automatically when opened or when the base revision
+changes. It refreshes the map after source edits and checks for new Git state
+every five seconds while visible, including commits and branch switches.
+Checks pause when the app is hidden; returning to it checks again. **Check now**
+is available for an immediate retry. A folder without Git history can still be
+explored; Changes explains when Git, a local folder, or a first commit is needed.
+
+Results include changed and
 removed declarations, incoming relationship paths, candidate tests and entry
 points, added/removed relationships, new import cycles and new violations of
 saved architecture rules. These are potential review targets, not predictions
@@ -73,15 +80,28 @@ IDs where available. It records at most 300 requests. It does not monitor other
 AI tools, claim an assistant understood a read, or attribute file edits to an AI.
 Select an investigation in Activity to compare observed edits with planned scope.
 
-A recursive source watcher marks changed paths. Auto refresh is opt-in in the
-status bar; manual Refresh is always available for a local project. Generated
+A recursive source watcher marks changed paths. Auto refresh is enabled by
+default and can be paused in the status bar; manual Refresh is always available
+for a local project. The Changes view keeps its comparison current even when
+general map auto refresh is paused. Generated
 folders, dependency roots and settings directories are filtered. Watcher failure
 is reported in Activity. On refresh, unchanged language-analysis groups are
 reused by content hash; a changed group is reanalyzed as a whole to keep its
 relationships consistent. This is group-level incremental reuse, not per-symbol
 incremental type checking. Stable positions, camera and valid selections survive.
-The 3D renderer redraws during interaction/animation and when state changes,
-and skips stationary scene renders. Picking is throttled to 25 checks per second.
+The 3D renderer uses a spatial hierarchy, viewport culling and screen-space
+detail selection. It submits at most 6,000 nodes and 8,000 connections when
+settled, or 2,000 nodes and 2,500 connections while moving. Selected code and
+its immediate relationships take priority; further detail appears when zooming.
+Only real graph edges between rendered nodes are drawn. The displayed counts
+describe the rendered subset, not the size of the analysis graph. Inspectors,
+search, MCP and snapshots retain all analyzed nodes and relationships.
+
+Geometry buffers are reused as the camera moves. Picking examines only drawn
+nodes, label candidates are bounded, and scope/navigation changes reuse the
+relationship index rather than rebuilding all geometry. The renderer skips
+stationary scene renders and pauses 3D drawing while the flat view is active.
+Picking is throttled to 25 checks per second.
 
 ## Architecture
 

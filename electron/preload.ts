@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import { UserError, userMessage } from "../shared/errors";
 import type {
   SourcefieldAPI,
   ScanProgress,
@@ -16,8 +17,21 @@ const api: SourcefieldAPI = {
       ipcRenderer.removeListener("sourcefield:update-ready", handler);
   },
   refresh: () => ipcRenderer.invoke("sourcefield:refresh"),
-  workbench: (action, args = {}) =>
-    ipcRenderer.invoke("sourcefield:workbench", action, args),
+  workbench: async (action, args = {}) => {
+    try {
+      const result = await ipcRenderer.invoke(
+        "sourcefield:workbench",
+        action,
+        args,
+      );
+      if (!result.ok)
+        throw new UserError(result.error, result.errorCode ?? "ACTION_FAILED");
+      return result.value;
+    } catch (error) {
+      if (error instanceof UserError) throw error;
+      throw new Error(userMessage(error));
+    }
+  },
   onDirty: (callback) => {
     const handler = (
       _event: Electron.IpcRendererEvent,

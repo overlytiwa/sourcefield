@@ -1,5 +1,6 @@
 import { Worker } from "node:worker_threads";
 import path from "node:path";
+import { UserError } from "../shared/errors";
 export function background<T>(data: Record<string, unknown>): Promise<T> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(path.join(__dirname, "task-worker.cjs"), {
@@ -17,7 +18,11 @@ export function background<T>(data: Record<string, unknown>): Promise<T> {
     };
     worker.once("message", (reply) => {
       finish();
-      reply.ok ? resolve(reply.value) : reject(new Error(reply.error));
+      reply.ok
+        ? resolve(reply.value)
+        : reject(
+            new UserError(reply.error, reply.errorCode ?? "BACKGROUND_FAILED"),
+          );
     });
     worker.once("error", (error) => {
       finish();

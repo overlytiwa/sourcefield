@@ -1,6 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { callLocalBridge } from "./bridge";
+import skill from "../../resources/skills/sourcefield/SKILL.md";
+import { version } from "../../package.json";
+import { userMessage } from "../../shared/errors";
 import {
   MCP_INSTRUCTIONS,
   toolDescriptions,
@@ -10,8 +13,32 @@ import {
 
 export async function startMcpServer() {
   const server = new McpServer(
-    { name: "sourcefield", version: "1.3.0" },
-    { instructions: MCP_INSTRUCTIONS },
+    { name: "sourcefield", version },
+    { instructions: MCP_INSTRUCTIONS + "\n\n" + skill },
+  );
+  server.registerResource(
+    "sourcefield-skill",
+    "sourcefield://guides/skill",
+    {
+      title: "Use Sourcefield",
+      description:
+        "Workflows for understanding code and reviewing changes with Sourcefield.",
+      mimeType: "text/markdown",
+    },
+    async (uri) => ({
+      contents: [{ uri: uri.href, mimeType: "text/markdown", text: skill }],
+    }),
+  );
+  server.registerPrompt(
+    "sourcefield-guide",
+    {
+      title: "Use Sourcefield",
+      description:
+        "Learn how to investigate a project and verify changes with Sourcefield.",
+    },
+    async () => ({
+      messages: [{ role: "user", content: { type: "text", text: skill } }],
+    }),
   );
   for (const name of Object.keys(toolSchemas) as ToolName[]) {
     server.registerTool(
@@ -39,10 +66,10 @@ export async function startMcpServer() {
             content: [
               {
                 type: "text" as const,
-                text:
-                  error instanceof Error
-                    ? error.message
-                    : "Sourcefield request failed.",
+                text: userMessage(
+                  error,
+                  "Sourcefield couldn’t complete that request. Try again.",
+                ),
               },
             ],
           };

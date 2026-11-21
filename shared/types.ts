@@ -134,7 +134,8 @@ export interface McpConfiguration {
   codex: string;
 }
 export type ActionResult<T> =
-  { ok: true; value: T } | { ok: false; error: string; cancelled?: boolean };
+  | { ok: true; value: T }
+  | { ok: false; error: string; errorCode?: string; cancelled?: boolean };
 export interface SourcefieldAPI {
   onUpdateReady(callback: (version: string) => void): () => void;
   refresh(): Promise<ActionResult<CodeMap>>;
