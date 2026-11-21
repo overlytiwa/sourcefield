@@ -54,6 +54,9 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm run test:core
+      - name: Check Electron lifecycle on Linux
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run smoke:desktop
       - name: Build native release packages
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}

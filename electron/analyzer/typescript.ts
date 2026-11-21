@@ -32,7 +32,10 @@ export async function analyzeTypeScript(
   const configPath =
     ts.findConfigFile(root, ts.sys.fileExists, "tsconfig.json") ??
     ts.findConfigFile(root, ts.sys.fileExists, "jsconfig.json");
-  if (configPath && path.dirname(configPath) === root) {
+  if (
+    configPath &&
+    path.relative(root, path.resolve(path.dirname(configPath))) === ""
+  ) {
     const config = ts.readConfigFile(configPath, ts.sys.readFile);
     if (!config.error) {
       const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, root);
@@ -60,7 +63,16 @@ export async function analyzeTypeScript(
         "jsconfig.json",
       );
     let local = options;
-    if (config && (config === root || config.startsWith(root + path.sep))) {
+    const relativeConfig = config
+      ? path.relative(root, path.resolve(config))
+      : undefined;
+    if (
+      config &&
+      relativeConfig !== undefined &&
+      !path.isAbsolute(relativeConfig) &&
+      relativeConfig !== ".." &&
+      !relativeConfig.startsWith(".." + path.sep)
+    ) {
       if (!configOptions.has(config)) {
         const raw = ts.readConfigFile(config, ts.sys.readFile);
         configOptions.set(
@@ -92,7 +104,10 @@ export async function analyzeTypeScript(
     host,
   );
   const checker = program.getTypeChecker();
-  const normalized = (p: string) => path.resolve(p);
+  const normalized = (p: string) =>
+    ts.sys.useCaseSensitiveFileNames
+      ? path.resolve(p)
+      : path.resolve(p).toLowerCase();
   const input = new Map(files.map((f) => [normalized(f.absolute), f]));
   const declIds = new Map<ts.Node, string>();
   const symbolIds = new Map<ts.Symbol, string>();
