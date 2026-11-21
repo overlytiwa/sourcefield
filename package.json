@@ -1,8 +1,8 @@
 {
   "name": "sourcefield",
   "productName": "Sourcefield",
-  "version": "1.2.1",
-  "description": "Explore a local codebase as a luminous, symbol-level 3D map.",
+  "version": "1.3.0",
+  "description": "Understand features, review changes and investigate local codebases.",
   "private": true,
   "main": "dist-electron/main.cjs",
   "author": "Sourcefield contributors",
@@ -19,10 +19,17 @@
     "mcp": "node dist-electron/mcp.cjs",
     "smoke:mcp": "node scripts/mcp-smoke.mjs",
     "smoke:dependencies": "node scripts/dependencies-smoke.mjs",
-    "smoke:render": "node scripts/render-smoke.mjs"
+    "smoke:render": "node scripts/render-smoke.mjs",
+    "release": "node scripts/release.mjs",
+    "smoke:workbench": "node scripts/workbench-smoke.mjs",
+    "test:core": "npm run smoke && npm run smoke:dependencies && npm run smoke:render && npm run smoke:mcp && npm run smoke:workbench && npm run smoke:ui",
+    "smoke:ui": "node scripts/ui-smoke.mjs",
+    "format": "prettier --write src electron shared scripts docs .github package.json README.md"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "chokidar": "^4.0.3",
+    "electron-updater": "^6.8.11",
     "ignore": "^7.0.5",
     "lucide-react": "^0.468.0",
     "react": "^19.2.0",
@@ -34,6 +41,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@testing-library/react": "^16.3.3",
     "@types/node": "^24.10.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
@@ -42,6 +50,8 @@
     "electron": "^45.3.4",
     "electron-builder": "^26.0.12",
     "esbuild": "^0.27.0",
+    "jsdom": "^26.1.0",
+    "prettier": "^3.10.1",
     "sharp": "^0.34.5",
     "vite": "^7.2.2"
   },
@@ -73,17 +83,20 @@
         "nsis",
         "portable"
       ],
-      "icon": "resources/icons/icon.ico"
+      "icon": "resources/icons/icon.ico",
+      "artifactName": "Sourcefield-Setup-${version}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "installerIcon": "resources/icons/icon.ico",
-      "uninstallerIcon": "resources/icons/icon.ico"
+      "uninstallerIcon": "resources/icons/icon.ico",
+      "license": "resources/license.txt"
     },
     "mac": {
       "target": [
-        "dmg"
+        "dmg",
+        "zip"
       ],
       "category": "public.app-category.developer-tools",
       "icon": "resources/icons/icon.icns"
@@ -113,9 +126,25 @@
         "from": "dist-electron/mcp.cjs",
         "to": "mcp/sourcefield-mcp.cjs"
       }
-    ]
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "overlytiwa",
+        "repo": "sourcefield",
+        "releaseType": "release"
+      }
+    ],
+    "artifactName": "Sourcefield-${version}-${os}-${arch}.${ext}",
+    "portable": {
+      "artifactName": "Sourcefield-Portable-${version}-${arch}.${ext}"
+    }
   },
   "bin": {
     "sourcefield": "scripts/sourcefield.cjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/overlytiwa/sourcefield.git"
   }
 }

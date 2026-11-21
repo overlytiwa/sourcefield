@@ -41,7 +41,7 @@ class Collector(ast.NodeVisitor):
         start, end = getattr(n, 'lineno', 1), getattr(n, 'end_lineno', 1)
         record = dict(id=ident, name=name, kind=kind, path=self.file, line=start,
                       endLine=end, column=getattr(n, 'col_offset', 0) + 1, parent=self.scope,
-                      language='Python', position=[0, 0, 0], degree=0,
+                      fingerprint=hashlib.sha256((ast.get_source_segment(self.text,n) or name).encode()).hexdigest(), language='Python', position=[0, 0, 0], degree=0,
                       excerpt='\n'.join(self.lines[start-1:min(end, start+11)])[:2400])
         nodes.append(record)
         node_by_id[ident] = record
@@ -169,6 +169,8 @@ class Connections(ast.NodeVisitor):
                 if target: link(ident, target, 'inherits', self.file, base.lineno)
                 else: issue('unresolved', self.file, ast.unparse(base), 'Base class cannot be statically resolved.', base.lineno, ident, 'inherits')
         for deco in n.decorator_list: self.visit(deco)
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            for default in n.args.defaults + [d for d in n.args.kw_defaults if d is not None]: self.visit(default)
         outer, self.scope = self.scope, ident
         for stmt in n.body: self.visit(stmt)
         self.scope = outer

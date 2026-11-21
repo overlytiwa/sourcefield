@@ -6,6 +6,18 @@ Use it to understand an unfamiliar project, locate an implementation, follow dep
 
 Analysis runs on your computer. Sourcefield does not execute your project to create a map.
 
+## Developer workbench
+
+Review Git changes with evidence-backed potential impact paths, find UI/route/IPC
+entry points, save investigations and guided tours, inspect observed MCP activity,
+check architecture boundaries, and locate stack traces, LCOV coverage and OTLP
+runtime spans on the graph. Use the toolbar Workbench button to start.
+
+See [the workbench guide](docs/workbench.md) for workflows, source freshness,
+analysis limits and the difference between inferred impact and observed execution.
+See [builds, releases and updates](docs/releases.md) for native installers,
+automated GitHub publication, background updates and signing requirements.
+
 ## Contents
 
 - [Open a project](#open-a-project)
@@ -36,18 +48,18 @@ Use **Cancel scan** to stop an analysis. A new map replaces the current map when
 
 ### Refresh after code changes
 
-A map is a static analysis snapshot. Sourcefield does not watch your source directory or update relationships as you edit files.
+A map is a static analysis snapshot. Sourcefield watches local source changes and marks the map stale. Use Refresh or enable Auto refresh in the status bar to update the graph.
 
-To refresh it, use **Open folder** again and select the same project. This creates a new graph from the current source. An exported map always retains the snapshot that was saved into it.
+Use **Refresh** to analyze current source while preserving the view. Unchanged language groups reuse cached analysis. An exported map always retains the snapshot that was saved into it.
 
 ### Runtime requirements
 
-| Feature | Requirement |
-| --- | --- |
-| Desktop visualization | A working WebGL graphics context |
-| Python analysis | Python 3.10 or newer available as `python3` or `python` on PATH |
-| Analysis of the other supported languages | No separate language compiler is required |
-| Local MCP connection | Node.js 22.12 or newer available to the AI client |
+| Feature                                   | Requirement                                                     |
+| ----------------------------------------- | --------------------------------------------------------------- |
+| Desktop visualization                     | A working WebGL graphics context                                |
+| Python analysis                           | Python 3.10 or newer available as `python3` or `python` on PATH |
+| Analysis of the other supported languages | No separate language compiler is required                       |
+| Local MCP connection                      | Node.js 22.12 or newer available to the AI client               |
 
 Sourcefield does not install your project's dependencies or run its build scripts. Existing dependency type declarations can help the JavaScript/TypeScript analyzer resolve symbols, but dependency files are not automatically added to the visible graph.
 
@@ -71,14 +83,15 @@ Unsupported files still appear as file nodes in their real folders. Their conten
 
 ### Relationships and direction
 
-| Relationship | Direction | Meaning |
-| --- | --- | --- |
-| `contains` | Parent → child | A folder contains a file, a file contains a declaration, or a declaration contains another declaration. |
-| `imports` | Importing file → imported file | A local import or supported include/require relationship was resolved. |
-| `exports` | File → exported symbol | A declaration is exposed by a module or is treated as visible by that language's analyzer. |
-| `calls` | Caller → callee | A call target could be resolved statically. |
-| `inherits` | Derived declaration → base declaration | A supported inheritance or implementation target was resolved. |
-| `references` | Referencing declaration → referenced symbol | A use of another symbol was resolved. |
+| Relationship | Direction                                   | Meaning                                                                                                 |
+| ------------ | ------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `contains`   | Parent → child                              | A folder contains a file, a file contains a declaration, or a declaration contains another declaration. |
+| `imports`    | Importing file → imported file              | A local import or supported include/require relationship was resolved.                                  |
+| `exports`    | File → exported symbol                      | A declaration is exposed by a module or is treated as visible by that language's analyzer.              |
+| `calls`      | Caller → callee                             | A call target could be resolved statically.                                                             |
+| `inherits`   | Derived declaration → base declaration      | A supported inheritance or implementation target was resolved.                                          |
+| `dispatches` | Requesting symbol → handler                 | An explicit Electron IPC channel connects a request to its handler.                                     |
+| `references` | Referencing declaration → referenced symbol | A use of another symbol was resolved.                                                                   |
 
 Repeated occurrences between the same source, target, and relationship type are grouped into one edge with an occurrence count. The edge can retain multiple source locations.
 
@@ -92,15 +105,15 @@ Labels fade with distance and are checked for overlap. Sourcefield displays up t
 
 ## Navigate and inspect code
 
-| Action | Control |
-| --- | --- |
-| Orbit the map | Left-drag |
-| Pan | Right-drag or Shift-drag |
-| Move closer or farther away | Scroll, pinch, or use the zoom buttons |
-| Fit the whole map | Fit button or `Shift+F` |
-| Select and focus a node | Click a point or its visible label |
-| Clear the selection | Click empty space or close the inspector |
-| Follow a relationship | Click a direct-connection row in the inspector |
+| Action                      | Control                                        |
+| --------------------------- | ---------------------------------------------- |
+| Orbit the map               | Left-drag                                      |
+| Pan                         | Right-drag or Shift-drag                       |
+| Move closer or farther away | Scroll, pinch, or use the zoom buttons         |
+| Fit the whole map           | Fit button or `Shift+F`                        |
+| Select and focus a node     | Click a point or its visible label             |
+| Clear the selection         | Click empty space or close the inspector       |
+| Follow a relationship       | Click a direct-connection row in the inspector |
 
 Point selection uses the visible screen position and a click target that scales with the rendered point. You can also select a visible label or use search when a region is dense.
 
@@ -275,13 +288,13 @@ sourcefield --help
 sourcefield --version
 ```
 
-| Command | Behavior |
-| --- | --- |
-| `sourcefield` | Opens the desktop app. |
-| `sourcefield .` | Opens and scans the terminal's current directory. |
-| `sourcefield <directory>` | Opens and scans an absolute or relative project directory. |
-| `sourcefield <map.sourcefield>` | Opens a saved snapshot. |
-| `sourcefield mcp` | Runs the local MCP stdio server through the Node CLI launcher. |
+| Command                         | Behavior                                                       |
+| ------------------------------- | -------------------------------------------------------------- |
+| `sourcefield`                   | Opens the desktop app.                                         |
+| `sourcefield .`                 | Opens and scans the terminal's current directory.              |
+| `sourcefield <directory>`       | Opens and scans an absolute or relative project directory.     |
+| `sourcefield <map.sourcefield>` | Opens a saved snapshot.                                        |
+| `sourcefield mcp`               | Runs the local MCP stdio server through the Node CLI launcher. |
 
 Quote paths containing spaces. The desktop executable also accepts directory arguments and the explicit `--map <path>` option. Availability of the command on PATH depends on how Sourcefield was distributed or registered on the machine.
 
@@ -307,18 +320,18 @@ Sourcefield does not modify the client's configuration for you. Full configurati
 
 ### Available MCP tools
 
-| Tool | Use |
-| --- | --- |
-| `sourcefield_project_overview` | Get the active project ID, source mode, languages, counts, diagnostic totals, and important files. |
-| `sourcefield_search_symbols` | Search names and paths with kind, language, export, and path filters. Returns IDs, locations, signatures, previews, and connection counts. |
-| `sourcefield_get_symbol` | Inspect one declaration, its containment chain, saved preview, connection counts, and related diagnostics. |
-| `sourcefield_get_connections` | Retrieve incoming or outgoing calls, references, imports, exports, inheritance, or containment, with linked symbol metadata and known source locations. |
-| `sourcefield_trace_dependencies` | Follow selected directed relationships across a bounded number of hops. |
-| `sourcefield_read_source` | Read numbered source lines for a symbol or relative file path, or retrieve a saved preview from an offline map. |
-| `sourcefield_search_source` | Search literal text in a bounded set of scanned files or saved previews, with coverage and truncation information. |
-| `sourcefield_get_diagnostics` | Inspect unsupported files, syntax issues, skipped files, limits, and unresolved or external targets. |
-| `sourcefield_get_view` | Read the camera, selection, highlighted node IDs, and visible layers. |
-| `sourcefield_control_view` | Focus, select, highlight, fit, zoom, clear selection, or change layers and labels in the desktop window. |
+| Tool                             | Use                                                                                                                                                     |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sourcefield_project_overview`   | Get the active project ID, source mode, languages, counts, diagnostic totals, and important files.                                                      |
+| `sourcefield_search_symbols`     | Search names and paths with kind, language, export, and path filters. Returns IDs, locations, signatures, previews, and connection counts.              |
+| `sourcefield_get_symbol`         | Inspect one declaration, its containment chain, saved preview, connection counts, and related diagnostics.                                              |
+| `sourcefield_get_connections`    | Retrieve incoming or outgoing calls, references, imports, exports, inheritance, or containment, with linked symbol metadata and known source locations. |
+| `sourcefield_trace_dependencies` | Follow selected directed relationships across a bounded number of hops.                                                                                 |
+| `sourcefield_read_source`        | Read numbered source lines for a symbol or relative file path, or retrieve a saved preview from an offline map.                                         |
+| `sourcefield_search_source`      | Search literal text in a bounded set of scanned files or saved previews, with coverage and truncation information.                                      |
+| `sourcefield_get_diagnostics`    | Inspect unsupported files, syntax issues, skipped files, limits, and unresolved or external targets.                                                    |
+| `sourcefield_get_view`           | Read the camera, selection, highlighted node IDs, and visible layers.                                                                                   |
+| `sourcefield_control_view`       | Focus, select, highlight, fit, zoom, clear selection, or change layers and labels in the desktop window.                                                |
 
 ### A useful request sequence
 
@@ -368,11 +381,11 @@ The model receives requested tool results. Sourcefield does not automatically in
 
 ### Live source, snapshots, and shared state
 
-| Situation | Graph and metadata | Source retrieval |
-| --- | --- | --- |
-| A project folder is open | Reflects the most recent scan. | MCP can read current contents of scanned files inside that project. |
-| A saved map is open | Uses the exported graph and exact stored coordinates. | MCP uses saved declaration previews and reports incomplete coverage. |
-| Source changed after scanning | Graph relationships and locations may be stale. | Current file reads flag modification times newer than the graph; rescan to refresh analysis. |
+| Situation                     | Graph and metadata                                    | Source retrieval                                                                             |
+| ----------------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| A project folder is open      | Reflects the most recent scan.                        | MCP can read current contents of scanned files inside that project.                          |
+| A saved map is open           | Uses the exported graph and exact stored coordinates. | MCP uses saved declaration previews and reports incomplete coverage.                         |
+| Source changed after scanning | Graph relationships and locations may be stale.       | Current file reads flag modification times newer than the graph; rescan to refresh analysis. |
 
 The inspector and `get_symbol` previews always show scan-time excerpts. They are distinct from a current-file read through `read_source`.
 
@@ -382,19 +395,23 @@ The MCP tools can read scoped project data and change the view. They do not edit
 
 ## Supported languages
 
-| Language | Common extensions | Analysis approach |
-| --- | --- | --- |
-| JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs` | TypeScript compiler API with JavaScript analysis. |
-| TypeScript | `.ts`, `.tsx`, `.mts`, `.cts` | TypeScript compiler API, including root `tsconfig.json`/`jsconfig.json` path-alias handling where applicable. |
-| Python | `.py`, `.pyi` | Python standard-library AST with lexical declarations and local import resolution. |
-| Go | `.go` | Tree-sitter syntax analysis with package scope and local module paths from `go.mod`. |
-| Rust | `.rs` | Tree-sitter syntax analysis with declarations, explicit local use paths, and conservative reference/call resolution. |
-| Java | `.java` | Tree-sitter syntax analysis for supported classes, interfaces, methods, declarations, imports, and relationships. |
-| C | `.c`, `.h` | Tree-sitter syntax analysis for declarations, types, functions/prototypes, local includes, and supported relationships. |
-| C++ | `.cpp`, `.cc`, `.cxx`, `.hpp`, `.hh`, `.hxx` | Tree-sitter syntax analysis for supported declarations, includes, calls, and references. `.h` files can use the C++ parser when C++ files are detected. |
-| C# | `.cs` | Tree-sitter syntax analysis for supported namespaces, types, methods, fields, parameters, and relationships. |
-| PHP | `.php` | Tree-sitter syntax analysis for supported namespaces, classes, functions, variables, imports, and relationships. |
-| Ruby | `.rb`, `.rake` | Tree-sitter syntax analysis for supported classes, methods, variables, explicit local requires, and relationships. |
+| Language   | Common extensions                            | Analysis approach                                                                                                                                       |
+| ---------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| JavaScript | `.js`, `.jsx`, `.mjs`, `.cjs`                | TypeScript compiler API with JavaScript analysis.                                                                                                       |
+| TypeScript | `.ts`, `.tsx`, `.mts`, `.cts`                | TypeScript compiler API, including root `tsconfig.json`/`jsconfig.json` path-alias handling where applicable.                                           |
+| Python     | `.py`, `.pyi`                                | Python standard-library AST with lexical declarations and local import resolution.                                                                      |
+| Kotlin     | `.kt`, `.kts`                                | Tree-sitter declarations, lexical calls and conservative package resolution.                                                                            |
+| Dart       | `.dart`                                      | Tree-sitter declarations and local calls.                                                                                                               |
+| Scala      | `.scala`, `.sc`                              | Tree-sitter declarations and lexical calls.                                                                                                             |
+| Bash       | `.sh`, `.bash`                               | Tree-sitter shell functions and explicit command calls.                                                                                                 |
+| Go         | `.go`                                        | Tree-sitter syntax analysis with package scope and local module paths from `go.mod`.                                                                    |
+| Rust       | `.rs`                                        | Tree-sitter syntax analysis with declarations, explicit local use paths, and conservative reference/call resolution.                                    |
+| Java       | `.java`                                      | Tree-sitter syntax analysis for supported classes, interfaces, methods, declarations, imports, and relationships.                                       |
+| C          | `.c`, `.h`                                   | Tree-sitter syntax analysis for declarations, types, functions/prototypes, local includes, and supported relationships.                                 |
+| C++        | `.cpp`, `.cc`, `.cxx`, `.hpp`, `.hh`, `.hxx` | Tree-sitter syntax analysis for supported declarations, includes, calls, and references. `.h` files can use the C++ parser when C++ files are detected. |
+| C#         | `.cs`                                        | Tree-sitter syntax analysis for supported namespaces, types, methods, fields, parameters, and relationships.                                            |
+| PHP        | `.php`                                       | Tree-sitter syntax analysis for supported namespaces, classes, functions, variables, imports, and relationships.                                        |
+| Ruby       | `.rb`, `.rake`                               | Tree-sitter syntax analysis for supported classes, methods, variables, explicit local requires, and relationships.                                      |
 
 Supported language does not mean every declaration form or runtime relationship can be resolved. Some constructs are extracted only partially, and others remain unresolved.
 
@@ -406,14 +423,14 @@ Dynamic dispatch, reflection, macros, generated code, overloaded or ambiguous ta
 
 Open the analysis report from the bottom status bar to inspect coverage.
 
-| Diagnostic | Meaning |
-| --- | --- |
-| `unsupported` | The file appears in the hierarchy, but its language is not analyzed. |
-| `unresolved` | A relationship target could not be established statically. |
-| `external` | The target is outside the scanned graph, such as a dependency or platform API. |
-| `parse` | Syntax could not be fully parsed; recovered declarations may still be shown. |
-| `skipped` | A file or directory could not be analyzed because of size, access, or an unavailable parser/runtime. |
-| `limit` | A scan or analysis limit was reached. |
+| Diagnostic    | Meaning                                                                                              |
+| ------------- | ---------------------------------------------------------------------------------------------------- |
+| `unsupported` | The file appears in the hierarchy, but its language is not analyzed.                                 |
+| `unresolved`  | A relationship target could not be established statically.                                           |
+| `external`    | The target is outside the scanned graph, such as a dependency or platform API.                       |
+| `parse`       | Syntax could not be fully parsed; recovered declarations may still be shown.                         |
+| `skipped`     | A file or directory could not be analyzed because of size, access, or an unavailable parser/runtime. |
+| `limit`       | A scan or analysis limit was reached.                                                                |
 
 Use the report's filters to inspect the relevant category. When a diagnostic has a known source node, its action can take you to that node.
 
@@ -421,16 +438,16 @@ Use the report's filters to inspect the relevant category. When a diagnostic has
 
 The scanner applies nested `.gitignore` rules and skips symlinks. It detects common installed-library directories and prunes them before enumerating their contents when **Show dependency code** is off.
 
-| Ecosystem | Recognized dependency folders or markers |
-| --- | --- |
-| JavaScript / TypeScript | `node_modules`, `bower_components`, `jspm_packages`, `.yarn`, `.pnpm-store`, `.npm` |
-| Python | `.venv`, `venv`, `site-packages`, `dist-packages`, `__pypackages__`; custom-named environments with `pyvenv.cfg` or `conda-meta/history` |
-| PHP, Go, Ruby, Rust | `vendor` next to an ecosystem manifest, or with Go/Composer installation markers; Cargo's `.cargo/registry` and `.cargo/git`; Go's `pkg/mod` with a download-cache marker |
-| Java / Kotlin | `.m2`, `.gradle` |
-| .NET | `.nuget`; installed NuGet package directories identified by `.nupkg.metadata` or a matching `.nupkg` file |
-| C / C++ | `vcpkg_installed`, `.conan`, `.conan2`, `third_party`, `third-party`, `thirdparty`; CMake `_deps` beside `CMakeCache.txt` |
-| Apple platforms | `Pods` with a Podfile or installation marker; `Carthage` next to a Cartfile |
-| Other ecosystems | `.pub-cache`, Lua's `lua_modules`, OCaml's `_opam`, Elixir's `deps` next to `mix.exs` |
+| Ecosystem               | Recognized dependency folders or markers                                                                                                                                  |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| JavaScript / TypeScript | `node_modules`, `bower_components`, `jspm_packages`, `.yarn`, `.pnpm-store`, `.npm`                                                                                       |
+| Python                  | `.venv`, `venv`, `site-packages`, `dist-packages`, `__pypackages__`; custom-named environments with `pyvenv.cfg` or `conda-meta/history`                                  |
+| PHP, Go, Ruby, Rust     | `vendor` next to an ecosystem manifest, or with Go/Composer installation markers; Cargo's `.cargo/registry` and `.cargo/git`; Go's `pkg/mod` with a download-cache marker |
+| Java / Kotlin           | `.m2`, `.gradle`                                                                                                                                                          |
+| .NET                    | `.nuget`; installed NuGet package directories identified by `.nupkg.metadata` or a matching `.nupkg` file                                                                 |
+| C / C++                 | `vcpkg_installed`, `.conan`, `.conan2`, `third_party`, `third-party`, `thirdparty`; CMake `_deps` beside `CMakeCache.txt`                                                 |
+| Apple platforms         | `Pods` with a Podfile or installation marker; `Carthage` next to a Cartfile                                                                                               |
+| Other ecosystems        | `.pub-cache`, Lua's `lua_modules`, OCaml's `_opam`, Elixir's `deps` next to `mix.exs`                                                                                     |
 
 Folder detection works independently of symbol-analysis support: a recognized Dart dependency directory can be excluded even though Dart symbols are not currently analyzed. Ordinary `lib`, `libs` and monorepo `packages` directories are kept unless another ignore rule applies. `.NET` `bin` and `obj` are treated as generated output only beside a project file.
 
@@ -442,18 +459,18 @@ The ignored count measures skipped directory entries, not the number of files re
 
 ### Practical limits
 
-| Area | Current limit |
-| --- | --- |
-| Files enumerated in a project scan | 12,000 |
-| Per-file content analysis | 2 MiB |
-| Symbol extraction budget | 100,000 per analyzer |
-| Saved declaration preview | Up to 12 lines and 2,400 characters |
-| Visible graph labels | Up to 90 at once |
-| Map file size and expanded JSON | 256 MiB each |
-| Default MCP result page | 15 results; paginated tools allow up to 60 |
-| MCP source read | 80 lines by default; up to 250 per request |
-| MCP dependency traversal | Up to 4 hops and 100 nodes; additional edge/result limits apply |
-| MCP literal text search | Up to 300 candidate files and 40 returned matches per request |
+| Area                               | Current limit                                                   |
+| ---------------------------------- | --------------------------------------------------------------- |
+| Files enumerated in a project scan | 12,000                                                          |
+| Per-file content analysis          | 2 MiB                                                           |
+| Symbol extraction budget           | 100,000 per analyzer                                            |
+| Saved declaration preview          | Up to 12 lines and 2,400 characters                             |
+| Visible graph labels               | Up to 90 at once                                                |
+| Map file size and expanded JSON    | 256 MiB each                                                    |
+| Default MCP result page            | 15 results; paginated tools allow up to 60                      |
+| MCP source read                    | 80 lines by default; up to 250 per request                      |
+| MCP dependency traversal           | Up to 4 hops and 100 nodes; additional edge/result limits apply |
+| MCP literal text search            | Up to 300 candidate files and 40 returned matches per request   |
 
 MCP source reads have a 2 MiB file limit. Responses include pagination, truncation, or coverage information where relevant. A partial search or traversal should not be interpreted as a complete inventory of all dependencies or matches.
 
@@ -473,50 +490,50 @@ Sourcefield stores window state and rendering preferences locally. Exported maps
 
 Use `Ctrl` on Windows/Linux and `Command` on macOS for the primary modifier.
 
-| Shortcut | Action |
-| --- | --- |
-| `Ctrl/Command+O` | Open a project folder. |
-| `Ctrl/Command+Shift+O` | Open a saved map. |
-| `Ctrl/Command+F` | Focus symbol/file search. |
-| `/` | Focus search when not typing in a text field. |
-| `Ctrl/Command+E` | Export the active map. |
-| `Shift+F` | Fit the map. |
-| `Arrow Up` / `Arrow Down` in search | Move through search results. |
-| `Enter` in search | Focus the selected result. |
-| `Escape` | Dismiss open menus, search results, or dialogs. |
+| Shortcut                            | Action                                          |
+| ----------------------------------- | ----------------------------------------------- |
+| `Ctrl/Command+O`                    | Open a project folder.                          |
+| `Ctrl/Command+Shift+O`              | Open a saved map.                               |
+| `Ctrl/Command+F`                    | Focus symbol/file search.                       |
+| `/`                                 | Focus search when not typing in a text field.   |
+| `Ctrl/Command+E`                    | Export the active map.                          |
+| `Shift+F`                           | Fit the map.                                    |
+| `Arrow Up` / `Arrow Down` in search | Move through search results.                    |
+| `Enter` in search                   | Focus the selected result.                      |
+| `Escape`                            | Dismiss open menus, search results, or dialogs. |
 
 Native menus also expose file actions, standard editing commands, and fullscreen control.
 
 ## Troubleshooting
 
-| Problem | What to check |
-| --- | --- |
-| A file or folder is missing | Check `.gitignore`, hard exclusions, symlinks, access permissions, and the scan's file limit. |
-| A file appears but has no declarations | Check its language, analysis status, and the report for unsupported, skipped, or syntax diagnostics. |
-| Python symbols are missing | Make sure Python 3.10+ is available as `python3` or `python` on PATH, then rescan. |
-| A known call or reference is absent | Inspect unresolved/external diagnostics and language limitations. Rescan if the source changed. |
-| Labels are not visible | Enable labels and zoom closer. Overlap prevention can hide some names; use search for an exact symbol. |
-| Nodes are hard to pick in a dense area | Zoom closer, click a visible label, or select the node from search. |
-| The map is slow | Turn off Show dependency code, reduce or disable glow, enable Automatic performance, or scan a smaller directory. |
-| Glow switched off by itself | Automatic performance paused it. Use View settings → Restore glow to retry. |
-| A source preview looks outdated | Inspector previews are scan-time snapshots. Rescan the project; MCP can also read current scanned source files. |
-| A map opens without its source folder, but full source is unavailable | Expected for a saved map. It retains graph data and limited previews, not complete source files. |
-| Explorer does not open the map in Sourcefield | Check the file association and ensure the executable path and `%1` are quoted. |
-| An AI client lists tools but calls fail | Keep Sourcefield open with a project/map loaded and wait for a scan to finish. |
-| The client cannot start the MCP server | Check the Node executable, absolute server path, client configuration, and client logs. |
-| An MCP request reports a different project | Get a fresh overview or search result and use its new `project_id`. |
-| The 3D view cannot start | Check that the system can create a working WebGL graphics context. |
+| Problem                                                               | What to check                                                                                                     |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| A file or folder is missing                                           | Check `.gitignore`, hard exclusions, symlinks, access permissions, and the scan's file limit.                     |
+| A file appears but has no declarations                                | Check its language, analysis status, and the report for unsupported, skipped, or syntax diagnostics.              |
+| Python symbols are missing                                            | Make sure Python 3.10+ is available as `python3` or `python` on PATH, then rescan.                                |
+| A known call or reference is absent                                   | Inspect unresolved/external diagnostics and language limitations. Rescan if the source changed.                   |
+| Labels are not visible                                                | Enable labels and zoom closer. Overlap prevention can hide some names; use search for an exact symbol.            |
+| Nodes are hard to pick in a dense area                                | Zoom closer, click a visible label, or select the node from search.                                               |
+| The map is slow                                                       | Turn off Show dependency code, reduce or disable glow, enable Automatic performance, or scan a smaller directory. |
+| Glow switched off by itself                                           | Automatic performance paused it. Use View settings → Restore glow to retry.                                       |
+| A source preview looks outdated                                       | Inspector previews are scan-time snapshots. Rescan the project; MCP can also read current scanned source files.   |
+| A map opens without its source folder, but full source is unavailable | Expected for a saved map. It retains graph data and limited previews, not complete source files.                  |
+| Explorer does not open the map in Sourcefield                         | Check the file association and ensure the executable path and `%1` are quoted.                                    |
+| An AI client lists tools but calls fail                               | Keep Sourcefield open with a project/map loaded and wait for a scan to finish.                                    |
+| The client cannot start the MCP server                                | Check the Node executable, absolute server path, client configuration, and client logs.                           |
+| An MCP request reports a different project                            | Get a fresh overview or search result and use its new `project_id`.                                               |
+| The 3D view cannot start                                              | Check that the system can create a working WebGL graphics context.                                                |
 
 Client-specific MCP troubleshooting is in [Local MCP integration](docs/mcp.md).
 
 ## Technical documentation
 
-| Document | Covers |
-| --- | --- |
-| [Local MCP integration](docs/mcp.md) | Claude and ChatGPT/Codex configuration, tool behavior, installed-app paths, and integration checks. |
-| [Map format](docs/format.md) | Binary header, compression, versioned schema, nodes, edges, view state, and validation. |
-| [File association](docs/file-association.md) | Explorer arguments, existing-instance behavior, and Inno open-command integration. |
-| [Source development](docs/development.md) | Runtime dependencies, source commands, packaging, project organization, and icon assets. |
+| Document                                     | Covers                                                                                              |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| [Local MCP integration](docs/mcp.md)         | Claude and ChatGPT/Codex configuration, tool behavior, installed-app paths, and integration checks. |
+| [Map format](docs/format.md)                 | Binary header, compression, versioned schema, nodes, edges, view state, and validation.             |
+| [File association](docs/file-association.md) | Explorer arguments, existing-instance behavior, and Inno open-command integration.                  |
+| [Source development](docs/development.md)    | Runtime dependencies, source commands, packaging, project organization, and icon assets.            |
 
 ## License
 
